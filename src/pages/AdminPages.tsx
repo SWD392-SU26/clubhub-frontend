@@ -436,6 +436,36 @@ export function CreateEventPage() {
           <h3 className="mt-3 font-bold">Ảnh bìa sự kiện</h3>
         </div>
       </section>
+      <section className="mt-6 grid gap-4 md:grid-cols-2">
+        <Link
+          to="/club-admin/transfer"
+          className="card flex items-start gap-4 p-5 transition hover:-translate-y-0.5 hover:shadow-lift"
+        >
+          <div className="grid h-12 w-12 place-items-center rounded-xl bg-fpt-blue-soft text-fpt-blue">
+            <UserPlus className="h-5 w-5" />
+          </div>
+          <div>
+            <h3 className="font-extrabold text-ink">Chuyển giao quyền</h3>
+            <p className="mt-1 text-sm leading-6 text-muted">
+              Chọn thành viên đủ điều kiện để chuyển quyền quản lý CLB.
+            </p>
+          </div>
+        </Link>
+        <Link
+          to="/club-admin/status"
+          className="card flex items-start gap-4 p-5 transition hover:-translate-y-0.5 hover:shadow-lift"
+        >
+          <div className="grid h-12 w-12 place-items-center rounded-xl bg-fpt-green-soft text-fpt-green-dark">
+            <Eye className="h-5 w-5" />
+          </div>
+          <div>
+            <h3 className="font-extrabold text-ink">Trạng thái hiển thị</h3>
+            <p className="mt-1 text-sm leading-6 text-muted">
+              Kiểm tra trạng thái công khai, ẩn hoặc yêu cầu ngừng hoạt động.
+            </p>
+          </div>
+        </Link>
+      </section>
     </main>
   );
 }
@@ -832,10 +862,34 @@ export function ProposalReviewPage() {
             Hồ sơ gồm mô tả CLB, lý do thành lập, kế hoạch hoạt động, người sáng
             lập và tài liệu đính kèm.
           </p>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            {[
+              ["Tên đề xuất", p.name],
+              ["Người sáng lập", p.founder],
+              ["Khoa/đơn vị", p.faculty],
+              ["Ngày gửi", p.date],
+              ["Trạng thái", p.status],
+              ["Điểm đánh giá", `${p.score}/10`],
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-xl border bg-slate-50 p-4">
+                <div className="text-xs font-bold uppercase text-muted">
+                  {label}
+                </div>
+                <div className="mt-1 font-semibold text-ink">{value}</div>
+              </div>
+            ))}
+          </div>
           <div className="mt-5 rounded-xl border p-4">
             <FileCheck2 className="inline text-primary" />{" "}
             Ke_hoach_hoat_dong_2026.pdf
           </div>
+          <label className="mt-5 block">
+            <span className="label">Ghi chú thẩm định</span>
+            <textarea
+              className="input h-28 py-3"
+              defaultValue="Đề án có mục tiêu rõ, cần bổ sung kế hoạch nhân sự ban điều hành trong 6 tháng đầu."
+            />
+          </label>
         </SectionCard>
         <SectionCard title="Lịch sử thẩm định">
           {[
@@ -847,6 +901,22 @@ export function ProposalReviewPage() {
               {x}
             </div>
           ))}
+          <div className="mt-5 rounded-2xl bg-primary-soft p-4">
+            <div className="text-sm font-bold text-primary-dark">
+              Checklist trước khi duyệt
+            </div>
+            {[
+              "Thông tin người sáng lập hợp lệ",
+              "Tên CLB không trùng lặp",
+              "Có kế hoạch hoạt động tối thiểu 1 học kỳ",
+              "Có giảng viên/đơn vị hỗ trợ",
+            ].map((item) => (
+              <div key={item} className="mt-3 flex items-center gap-2 text-sm">
+                <CheckCircle2 className="h-4 w-4 text-fpt-green-dark" />
+                {item}
+              </div>
+            ))}
+          </div>
         </SectionCard>
       </div>
     </main>
@@ -946,10 +1016,49 @@ export function SystemClubDetailPage() {
           </>
         }
       />
+      <div className="mb-6 grid gap-4 md:grid-cols-4">
+        <StatCard
+          label="Thành viên"
+          value={String(c.members)}
+          icon={Users}
+          tone="primary"
+        />
+        <StatCard
+          label="Sự kiện đã tạo"
+          value="24"
+          meta="+6 kỳ này"
+          icon={CalendarDays}
+          tone="blue"
+        />
+        <StatCard label="Điểm hoạt động" value="8.9" icon={Star} tone="green" />
+        <StatCard label="Cảnh báo" value="0" icon={ShieldCheck} tone="slate" />
+      </div>
       <div className="grid gap-6 lg:grid-cols-[.8fr_1.4fr]">
         <SectionCard title="CLUB_ADMIN phụ trách">
           <h3 className="font-bold">{c.admin}</h3>
           <p className="text-muted">Đang quản lý {c.name}</p>
+          <div className="mt-5 space-y-3 text-sm">
+            <div className="flex justify-between rounded-xl bg-slate-50 p-3">
+              <span className="text-muted">Email</span>
+              <span className="font-semibold">admin.clubhub@fpt.edu.vn</span>
+            </div>
+            <div className="flex justify-between rounded-xl bg-slate-50 p-3">
+              <span className="text-muted">Phân loại</span>
+              <span className="font-semibold">{c.category}</span>
+            </div>
+            <div className="flex justify-between rounded-xl bg-slate-50 p-3">
+              <span className="text-muted">Trạng thái</span>
+              <StatusBadge status={c.status} />
+            </div>
+          </div>
+          <div className="mt-5 grid gap-2">
+            <button className="btn-secondary justify-center">
+              Đổi CLUB_ADMIN phụ trách
+            </button>
+            <button className="btn-ghost justify-center text-red-600">
+              Tạm khóa quyền quản trị
+            </button>
+          </div>
         </SectionCard>
         <SectionCard title="Lịch sử quản trị">
           <DataTable
@@ -963,6 +1072,21 @@ export function SystemClubDetailPage() {
           />
         </SectionCard>
       </div>
+      <section className="mt-6 grid gap-4 md:grid-cols-3">
+        {[
+          ["Hồ sơ công khai", "Đang hiển thị trên trang khám phá CLB."],
+          ["Kiểm duyệt nội dung", "Không có mô tả hoặc ảnh cần xử lý."],
+          [
+            "Sẵn sàng backend",
+            "Các action có thể map API lock, archive, update admin.",
+          ],
+        ].map(([title, text]) => (
+          <div key={title} className="card p-5">
+            <div className="font-extrabold text-ink">{title}</div>
+            <p className="mt-2 text-sm leading-6 text-muted">{text}</p>
+          </div>
+        ))}
+      </section>
     </main>
   );
 }

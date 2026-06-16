@@ -226,6 +226,7 @@ const studentNav = [
   ["/my-clubs", "Câu lạc bộ", Users],
   ["/my-events", "Sự kiện", CalendarDays],
   ["/club-proposals", "Đề xuất CLB", ClipboardCheck],
+  ["/activity/points", "Điểm", Trophy],
   ["/notifications", "Thông báo", Bell],
   ["/account/security", "Bảo mật", LockKeyhole],
 ] as const;
@@ -240,7 +241,7 @@ export function StudentLayout() {
           </button>
           <Brand />
           <nav className="hidden gap-5 md:flex">
-            {studentNav.slice(0, 4).map(([to, label]) => (
+            {studentNav.slice(0, 5).map(([to, label]) => (
               <NavLink
                 key={to}
                 to={to}
