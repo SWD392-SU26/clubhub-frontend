@@ -1,0 +1,86 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-slate-200;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply m-0 bg-slate-50 font-sans text-ink antialiased;
+  }
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+  button,
+  a {
+    -webkit-tap-highlight-color: transparent;
+  }
+  :focus-visible {
+    @apply outline-none ring-2 ring-primary ring-offset-2;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border bg-white shadow-card;
+  }
+  .page-shell {
+    @apply mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8;
+  }
+  .btn-primary {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 font-semibold text-white shadow-sm transition hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-secondary {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-primary bg-white px-5 py-2.5 font-semibold text-primary transition hover:bg-primary-soft;
+  }
+  .btn-info {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-fpt-blue px-5 py-2.5 font-semibold text-white transition hover:bg-fpt-blue-dark;
+  }
+  .btn-ghost {
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-xl px-3 py-2 font-medium text-slate-600 transition hover:bg-slate-100 hover:text-ink;
+  }
+  .input {
+    @apply h-12 w-full rounded-xl border bg-white px-4 text-sm text-ink placeholder:text-slate-400 focus:border-primary focus:ring-2 focus:ring-primary/20;
+  }
+  .label {
+    @apply mb-2 block text-sm font-semibold text-slate-700;
+  }
+  .section-title {
+    @apply text-xl font-bold tracking-tight text-ink sm:text-2xl;
+  }
+  .eyebrow {
+    @apply text-xs font-bold uppercase tracking-[0.18em] text-primary;
+  }
+  .status-active {
+    @apply rounded-full bg-fpt-green-soft px-2.5 py-1 text-xs font-bold text-fpt-green-dark;
+  }
+  .status-pending {
+    @apply rounded-full bg-fpt-orange-soft px-2.5 py-1 text-xs font-bold text-fpt-orange-dark;
+  }
+  .status-info {
+    @apply rounded-full bg-fpt-blue-soft px-2.5 py-1 text-xs font-bold text-fpt-blue-dark;
+  }
+  .status-danger {
+    @apply rounded-full bg-red-50 px-2.5 py-1 text-xs font-bold text-red-700;
+  }
+}
+
+.hero-grid {
+  background-image:
+    radial-gradient(
+      circle at 16% 12%,
+      rgba(243, 112, 33, 0.16),
+      transparent 28%
+    ),
+    radial-gradient(circle at 84% 18%, rgba(0, 91, 170, 0.13), transparent 28%),
+    radial-gradient(circle at 66% 88%, rgba(70, 185, 70, 0.12), transparent 26%);
+}
