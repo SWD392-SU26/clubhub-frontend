@@ -31,6 +31,8 @@ import {
   Building2,
 } from "lucide-react";
 import { useState } from "react";
+import { authApi } from "./api/authApi";
+import { clearAuthSession } from "./api/authStorage";
 export const images = {
   campus:
     "https://images.unsplash.com/photo-1542744173-8e7e53415bb0?auto=format&fit=crop&w=1600&q=80",
@@ -68,11 +70,16 @@ function LogoutButton({
 }) {
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    localStorage.removeItem("clubhub_user");
-    localStorage.removeItem("clubhub_role");
-    sessionStorage.clear();
-    navigate("/login", { replace: true });
+  const handleLogout = async () => {
+    try {
+      await authApi.logout();
+    } catch (error) {
+      console.error("Error occurred while logging out:", error);
+    } finally {
+      clearAuthSession();
+      sessionStorage.clear();
+      navigate("/login", { replace: true });
+    }
   };
 
   return (

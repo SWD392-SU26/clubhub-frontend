@@ -1,4 +1,7 @@
-import { FormEvent, useState } from "react";
+﻿import { FormEvent, useState } from "react";
+import { authApi } from "../api/authApi";
+import { setAuthSession } from "../api/authStorage";
+
 import {
   CheckCircle2,
   Eye,
@@ -10,29 +13,6 @@ import {
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { AuthShell, Brand } from "../components";
-const TEST_ACCOUNTS = [
-  {
-    email: "student@test.com",
-    password: "123456",
-    role: "student",
-    label: "Sinh viên",
-    redirect: "/dashboard",
-  },
-  {
-    email: "clubadmin@test.com",
-    password: "123456",
-    role: "club_admin",
-    label: "Quản trị CLB",
-    redirect: "/club-admin",
-  },
-  {
-    email: "systemadmin@test.com",
-    password: "123456",
-    role: "system_admin",
-    label: "Quản trị hệ thống",
-    redirect: "/system-admin",
-  },
-];
 function Field({
   label,
   type = "text",
@@ -40,6 +20,7 @@ function Field({
   icon: Icon,
   value,
   onChange,
+  error,
 }: {
   label: string;
   type?: string;
@@ -47,6 +28,7 @@ function Field({
   icon: typeof Mail;
   value: string;
   onChange: (v: string) => void;
+  error?: string;
 }) {
   const [show, setShow] = useState(false);
   const password = type === "password";
@@ -56,7 +38,7 @@ function Field({
       <span className="relative block">
         <Icon className="absolute left-4 top-3.5 h-5 w-5 text-slate-400" />
         <input
-          className="input pl-12 pr-11"
+          className={`input pl-12 pr-11 ${error ? "border-red-300 focus:border-red-500 focus:ring-red-100" : ""}`}
           type={password ? (show ? "text" : "password") : type}
           placeholder={placeholder}
           value={value}
@@ -76,85 +58,110 @@ function Field({
           </button>
         )}
       </span>
+      {error && (
+      <p className="mt-2 text-sm font-medium text-red-600">
+        {error}
+      </p>
+    )}
     </label>
   );
 }
 export function LoginPage({ compact = false }: { compact?: boolean }) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const submit = (e: FormEvent) => {
-    e.preventDefault();
-    const acc = TEST_ACCOUNTS.find(
-      (a) => a.email === email.trim() && a.password === password,
-    );
-    if (!acc) {
-      setError(
-        "Email hoặc mật khẩu không đúng. Hãy chọn tài khoản test bên dưới.",
-      );
-      return;
+  const [fieldErrors, setFieldErrors] = useState<{
+  username?: string;
+  password?: string;
+}>({});
+const [formError, setFormError] = useState("");
+  const submit = async (e: FormEvent) => {
+  e.preventDefault();
+
+  const trimmedUsername = username.trim();
+  const nextErrors: {
+    username?: string;
+    password?: string;
+  } = {};
+
+  if (!trimmedUsername) {
+    nextErrors.username = "Vui lòng nhập username.";
+  }
+
+  if (!password) {
+    nextErrors.password = "Vui lòng nhập mật khẩu.";
+  }
+
+  if (Object.keys(nextErrors).length > 0) {
+    setFieldErrors(nextErrors);
+    setFormError("");
+    return;
+  }
+
+  setFieldErrors({});
+  setFormError("");
+  setLoading(true);
+
+  try {
+    const data = await authApi.login({
+      emailOrUsername: trimmedUsername,
+      password,
+    });
+
+    setAuthSession(data);
+
+    if (data.profile.systemRole === "UniversityAdmin") {
+      navigate("/system-admin", { replace: true });
+    } else {
+      navigate("/dashboard", { replace: true });
     }
-    setLoading(true);
-    setTimeout(() => navigate(acc.redirect), 350);
-  };
+  } catch (err) {
+    setFormError(err instanceof Error ? err.message : "Đăng nhập thất bại.");
+  } finally {
+    setLoading(false);
+  }
+};
   const form = (
     <div className="w-full">
       <div className="mb-8 text-center lg:text-left">
         <div className="lg:hidden">
           <Brand />
         </div>
-        <h1 className="mt-6 text-3xl font-extrabold">Chào mừng bạn trở lại</h1>
+        <h1 className="mt-6 text-3xl font-extrabold">
+          Chào mừng bạn trở lại 
+        </h1>
         <p className="mt-2 text-muted">
           Đăng nhập để tiếp tục hành trình cùng cộng đồng CLB.
         </p>
       </div>
-      <div className="mb-4 rounded-2xl border border-dashed border-primary/40 bg-primary-soft p-4">
-        <p className="mb-3 text-xs font-bold uppercase tracking-wide text-primary">
-          Tài khoản test UI
-        </p>
-        <div className="grid gap-2 sm:grid-cols-3">
-          {TEST_ACCOUNTS.map((acc) => (
-            <button
-              key={acc.role}
-              type="button"
-              onClick={() => {
-                setEmail(acc.email);
-                setPassword(acc.password);
-                setError("");
-              }}
-              className="rounded-xl border border-primary/20 bg-white px-3 py-2.5 text-left text-xs transition hover:border-primary hover:bg-primary-soft"
-            >
-              <div className="font-bold text-ink">{acc.label}</div>
-              <div className="mt-0.5 text-muted">{acc.email}</div>
-            </button>
-          ))}
-        </div>
-        <p className="mt-2.5 text-xs text-muted">
-          Mật khẩu tất cả:{" "}
-          <span className="font-mono font-bold text-ink">123456</span>
-        </p>
-      </div>
       <form onSubmit={submit} className="card space-y-5 p-6 sm:p-8">
         <Field
-          label="Email hoặc MSSV"
-          placeholder="sv2026@university.edu.vn"
-          icon={Mail}
-          value={email}
-          onChange={setEmail}
-        />
+          label="Username"
+          placeholder="Nhập username"
+          icon={UserRound}
+          value={username}
+          onChange={(value) => {
+            setUsername(value);
+            setFieldErrors((prev) => ({ ...prev, username: undefined }));
+        }}
+        error={fieldErrors.username}
+/>
         <Field
           label="Mật khẩu"
           type="password"
           placeholder="Nhập mật khẩu"
           icon={KeyRound}
           value={password}
-          onChange={setPassword}
-        />
-        {error && (
+          onChange={(value) => {
+            setPassword(value);
+            setFieldErrors((prev) => ({ ...prev, password: undefined }));
+          }}
+          error={fieldErrors.password}
+        />      
+        {formError && (
           <p className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
-            {error}
+            {formError}
           </p>
         )}
         <div className="flex items-center justify-between text-sm">
@@ -171,9 +178,6 @@ export function LoginPage({ compact = false }: { compact?: boolean }) {
         </div>
         <button disabled={loading} className="btn-primary w-full">
           {loading ? "Đang đăng nhập..." : "Đăng nhập ngay"}
-        </button>
-        <button type="button" className="btn-secondary w-full">
-          Đăng nhập với Google
         </button>
       </form>
       <p className="mt-6 text-center text-sm">
@@ -193,6 +197,107 @@ export function LoginPage({ compact = false }: { compact?: boolean }) {
   );
 }
 export function RegisterPage() {
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+
+  const [fullName, setFullName] = useState("");
+  const [username, setUsername] = useState("");
+  const [studentCode, setStudentCode] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [agreeTerms, setAgreeTerms] = useState(false);
+
+  const [fieldErrors, setFieldErrors] = useState<{
+    fullName?: string;
+    username?: string;
+    studentCode?: string;
+    email?: string;
+    phone?: string;
+    password?: string;
+    confirmPassword?: string;
+    agreeTerms?: string;
+  }>({});
+
+  const [formError, setFormError] = useState("");
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+
+    const nextErrors: typeof fieldErrors = {};
+    const normalizedPhone = phone.trim().replace(/\s+/g, "");
+
+    if (!fullName.trim()) {
+      nextErrors.fullName = "Vui lòng nhập họ và tên.";
+    }
+
+    if (!username.trim()) {
+      nextErrors.username = "Vui lòng nhập username.";
+    }
+
+    if (!studentCode.trim()) {
+      nextErrors.studentCode = "Vui lòng nhập mã số sinh viên.";
+    }
+
+    if (!email.trim()) {
+      nextErrors.email = "Vui lòng nhập email trường.";
+    }
+
+    if (
+      normalizedPhone &&
+      !/^(0(3|5|7|8|9)\d{8}|\+84(3|5|7|8|9)\d{8})$/.test(normalizedPhone)
+    ) {
+      nextErrors.phone = "Số điện thoại không hợp lệ.";
+    }
+
+    if (!password) {
+      nextErrors.password = "Vui lòng nhập mật khẩu.";
+    } else if (password.length < 6) {
+      nextErrors.password = "Mật khẩu cần tối thiểu 6 ký tự.";
+    }
+
+    if (!confirmPassword) {
+      nextErrors.confirmPassword = "Vui lòng xác nhận mật khẩu.";
+    } else if (confirmPassword !== password) {
+      nextErrors.confirmPassword = "Mật khẩu xác nhận không khớp.";
+    }
+
+    if (!agreeTerms) {
+      nextErrors.agreeTerms = "Bạn cần đồng ý với điều khoản sử dụng.";
+    }
+
+    if (Object.keys(nextErrors).length > 0) {
+      setFieldErrors(nextErrors);
+      setFormError("");
+      return;
+    }
+
+    setFieldErrors({});
+    setFormError("");
+    setLoading(true);
+
+    try {
+      await authApi.register({
+        fullName: fullName.trim(),
+        username: username.trim(),
+        email: email.trim(),
+        password,
+        studentCode: studentCode.trim(),
+        phone: normalizedPhone || undefined,
+      });
+
+      navigate("/login", { 
+        replace: true,
+        state: { message: "Đăng ký thành công! Vui lòng đăng nhập." },
+      });
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Đăng ký thất bại.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <AuthShell headline="Bắt đầu hành trình sinh viên năng động.">
       <div className="w-full">
@@ -200,57 +305,114 @@ export function RegisterPage() {
         <p className="mt-2 text-muted">
           Sử dụng thông tin sinh viên chính thức của bạn.
         </p>
-        <form className="card mt-7 grid gap-5 p-6 sm:p-8">
+        <form onSubmit={submit} className="card mt-7 grid gap-5 p-6 sm:p-8">
           <Field
             label="Họ và tên"
             placeholder="Nguyễn Văn A"
             icon={UserRound}
-            value=""
-            onChange={() => {}}
+            value={fullName}
+            onChange={(value) => {
+              setFullName(value);
+              setFieldErrors((prev) => ({ ...prev, fullName: undefined }));
+            }}
+            error={fieldErrors.fullName}
           />
+          <Field
+            label="Username"
+            placeholder="thaonguyen1909"
+            icon={UserRound}
+            value={username}
+            onChange={(value) => {
+            setUsername(value);
+            setFieldErrors((prev) => ({ ...prev, username: undefined }));
+          }}
+          error={fieldErrors.username}
+/>
           <div className="grid gap-5 sm:grid-cols-2">
             <Field
               label="Mã số sinh viên"
               placeholder="SE180001"
               icon={ShieldCheck}
-              value=""
-              onChange={() => {}}
+              value={studentCode}
+              onChange={(value) => {
+                setStudentCode(value);
+                setFieldErrors((prev) => ({ ...prev, studentCode: undefined }));
+              }}
+              error={fieldErrors.studentCode}
             />
             <Field
               label="Email trường"
               placeholder="a.nv@university.edu.vn"
               icon={Mail}
-              value=""
-              onChange={() => {}}
+              value={email}
+              onChange={(value) => {
+                setEmail(value);
+                setFieldErrors((prev) => ({ ...prev, email: undefined }));
+              }}
+              error={fieldErrors.email}
             />
           </div>
+          <Field
+            label="Số điện thoại"
+            placeholder="0900000000"
+            icon={UserRound}
+            value={phone}
+            onChange={(value) => {
+              setPhone(value);
+              setFieldErrors((prev) => ({ ...prev, phone: undefined }));
+            }}
+            error={fieldErrors.phone}
+          />
           <div className="grid gap-5 sm:grid-cols-2">
             <Field
               label="Mật khẩu"
               type="password"
-              placeholder="Tối thiểu 8 ký tự"
+              placeholder="Tối thiểu 6 ký tự"
               icon={KeyRound}
-              value=""
-              onChange={() => {}}
+              value={password}
+              onChange={(value) => {
+                setPassword(value);
+                setFieldErrors((prev) => ({ ...prev, password: undefined }));
+              }}
+              error={fieldErrors.password}
             />
             <Field
               label="Xác nhận mật khẩu"
               type="password"
               placeholder="Nhập lại mật khẩu"
               icon={KeyRound}
-              value=""
-              onChange={() => {}}
+              value={confirmPassword}
+              onChange={(value) => {
+                setConfirmPassword(value);
+                setFieldErrors((prev) => ({ ...prev, confirmPassword: undefined }));
+              }}
+              error={fieldErrors.confirmPassword}
             />
           </div>
           <label className="flex items-start gap-3 text-sm text-muted">
             <input
               type="checkbox"
-              className="mt-1 rounded text-primary focus:ring-primary"
-            />
-            Tôi đồng ý với Điều khoản sử dụng và Chính sách bảo mật.
-          </label>
-          <button type="button" className="btn-primary">
-            Đăng ký tài khoản
+              checked={agreeTerms}
+              onChange={(e) => {
+              setAgreeTerms(e.target.checked);
+              setFieldErrors((prev) => ({ ...prev, agreeTerms: undefined }));
+          }}
+          className="mt-1 rounded text-primary focus:ring-primary"
+        />
+        Tôi đồng ý với Điều khoản sử dụng và Chính sách bảo mật.
+      </label>
+      {fieldErrors.agreeTerms && (
+        <p className="-mt-3 text-sm font-medium text-red-600">
+        {fieldErrors.agreeTerms}
+        </p>
+      )}
+      {formError && (
+        <p className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+      {formError}
+        </p>
+      )}
+          <button disabled={loading} className="btn-primary">
+            {loading ? "Đang đăng ký..." : "Đăng ký tài khoản"}
           </button>
         </form>
         <p className="mt-5 text-center text-sm">
@@ -278,9 +440,12 @@ export function ForgotPasswordPage() {
         {sent ? (
           <div className="card mt-7 p-7">
             <CheckCircle2 className="h-10 w-10 text-emerald-600" />
-            <h2 className="mt-4 text-xl font-bold">Đã gửi email khôi phục</h2>
+            <h2 className="mt-4 text-xl font-bold">
+              Đã gởi email khôi phục
+            </h2>
             <p className="mt-2 text-sm text-muted">
-              Hãy kiểm tra hộp thư. Liên kết có hiệu lực trong 15 phút.
+              Hãy kiểm tra hộp thư. Liên kết có hiệu lực trong 15
+              phút.
             </p>
             <Link to="/reset-password" className="btn-primary mt-6">
               Mở màn hình đặt lại
@@ -307,7 +472,7 @@ export function ForgotPasswordPage() {
           </form>
         )}
         <Link to="/login" className="btn-ghost mt-5">
-          ← Quay lại đăng nhập
+          Quay lại đăng nhập
         </Link>
       </div>
     </AuthShell>
@@ -319,7 +484,8 @@ export function ResetPasswordPage() {
       <form className="card w-full max-w-lg space-y-5 p-7">
         <h1 className="text-2xl font-extrabold">Đặt lại mật khẩu</h1>
         <p className="text-sm text-muted">
-          Mật khẩu cần tối thiểu 8 ký tự, gồm chữ hoa và ký tự đặc biệt.
+          Mật khẩu cần tối thiểu 6 ký tự, gồm chữ hoa và ký
+          tự đặc biệt.
         </p>
         <Field
           label="Mật khẩu mới"
