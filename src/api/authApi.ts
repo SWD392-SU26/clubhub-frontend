@@ -8,6 +8,7 @@ import type {
   ResetPasswordRequest,
   UpdateProfileRequest,
   UserProfile,
+  RefreshTokenRequest
 } from "../types/auth";
 
 export const authApi = {
@@ -21,6 +22,14 @@ export const authApi = {
 
   register(payload: RegisterRequest) {
     return apiRequest<LoginResponse>("/api/auth/register", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      auth: false,
+    });
+  },
+
+  refreshToken(payload: RefreshTokenRequest) {
+    return apiRequest<LoginResponse>("/api/auth/refresh-token", {
       method: "POST",
       body: JSON.stringify(payload),
       auth: false,

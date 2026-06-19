@@ -6,8 +6,7 @@ import {
   CheckCircle2,
   ChevronRight,
   Edit3,
-  Laptop,
-  LogOut,
+  LockKeyhole,
   Medal,
   Save,
   ShieldCheck,
@@ -20,7 +19,11 @@ import {
   Send,
   XCircle,
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { FormEvent, useEffect, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { authApi } from "../api/authApi";
+import { clearAuthSession, getProfile, setProfile } from "../api/authStorage";
+import type { UserProfile } from "../types/auth";
 import { clubs, events, members, proposals, auditLogs } from "../data";
 import {
   DataTable,
@@ -32,12 +35,60 @@ import {
   StatCard,
   StatusBadge,
 } from "../components";
+import { getProfileDisplayName, useCurrentProfile } from "../useCurrentProfile";
+
+function getInitials(name?: string | null) {
+  if (!name?.trim()) return "U";
+
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(-2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+}
+
+function getAccountPaths(pathname: string) {
+  if (pathname.startsWith("/club-admin")) {
+    return {
+      profile: "/club-admin/profile",
+      edit: "/club-admin/profile/edit",
+      security: "/club-admin/account/security",
+    };
+  }
+
+  if (pathname.startsWith("/system-admin")) {
+    return {
+      profile: "/system-admin/profile",
+      edit: "/system-admin/profile/edit",
+      security: "/system-admin/account/security",
+    };
+  }
+
+  return {
+    profile: "/profile",
+    edit: "/profile/edit",
+    security: "/account/security",
+  };
+}
+
+function getRoleLabel(profile?: UserProfile | null, pathname = "") {
+  if (pathname.startsWith("/club-admin")) return "Club Admin";
+  if (pathname.startsWith("/system-admin")) return "University Admin";
+  if (profile?.systemRole === "UniversityAdmin") return "University Admin";
+  return "Student";
+}
+
 export function StudentDashboard() {
+  const profile = useCurrentProfile();
+  const displayName = getProfileDisplayName(profile);
+
   return (
     <main className="page-shell">
       <PageTitle
         eyebrow="STUDENT"
-        title="Chào buổi sáng, Minh Hiếu!"
+        title={`Chào ${displayName}!`}
         description="Hôm nay bạn có 2 sự kiện câu lạc bộ sắp diễn ra."
         actions={
           <>
@@ -186,53 +237,115 @@ export function StudentDashboard() {
   );
 }
 export function ProfilePage() {
+  const location = useLocation();
+  const paths = getAccountPaths(location.pathname);
+  const [profile, setProfileState] = useState<UserProfile | null>(() =>
+    getProfile(),
+  );
+  const [loading, setLoading] = useState(!profile);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadProfile() {
+      setLoading(true);
+      setError("");
+
+      try {
+        const data = await authApi.getMe();
+        if (ignore) return;
+
+        setProfileState(data);
+        setProfile(data);
+      } catch (err) {
+        if (ignore) return;
+
+        setError(err instanceof Error ? err.message : "Không tải được hồ sơ.");
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    }
+
+    loadProfile();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  const initials = getInitials(profile?.fullName || profile?.username);
+
   return (
     <main className="page-shell">
       <div className="relative overflow-hidden rounded-[2rem] border bg-white shadow-card">
         <img src={images.campus} alt="" className="h-64 w-full object-cover" />
         <div className="p-6 pt-20 sm:pl-52 sm:pt-6">
-          <div className="absolute bottom-24 left-7 grid h-36 w-36 place-items-center rounded-3xl border-4 border-white bg-ink text-4xl font-extrabold text-white sm:bottom-6">
-            NA
+          <div className="absolute bottom-24 left-7 grid h-36 w-36 place-items-center overflow-hidden rounded-3xl border-4 border-white bg-ink text-4xl font-extrabold text-white sm:bottom-6">
+            {profile?.avatarUrl ? (
+              <img
+                src={profile.avatarUrl}
+                alt={profile.fullName}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              initials
+            )}
             <span className="absolute bottom-2 right-2 h-5 w-5 rounded-full border-4 border-white bg-emerald-500" />
           </div>
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
             <div>
-              <h1 className="text-2xl font-extrabold">Nguyễn Văn A</h1>
+              <h1 className="text-2xl font-extrabold">
+                {profile?.fullName || "Đang tải hồ sơ..."}
+              </h1>
               <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted">
-                <span>SV123456</span>
-                <span>Khoa Công nghệ Thông tin</span>
-                <span>Cơ sở Hà Nội</span>
+                <span>@{profile?.username || "username"}</span>
+                {profile?.studentCode && <span>{profile.studentCode}</span>}
+                <span>{getRoleLabel(profile, location.pathname)}</span>
+                {profile?.phone && <span>{profile.phone}</span>}
               </div>
             </div>
-            <Link to="/profile/edit" className="btn-primary">
+            <Link to={paths.edit} className="btn-primary">
               <Edit3 className="h-4 w-4" />
               Chỉnh sửa hồ sơ
             </Link>
           </div>
         </div>
       </div>
+      {error && (
+        <p className="mt-5 rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+          {error}
+        </p>
+      )}
+      {loading && !profile && (
+        <p className="mt-5 rounded-xl bg-slate-50 px-4 py-3 text-sm text-muted">
+          Đang tải thông tin hồ sơ...
+        </p>
+      )}
       <div className="mt-6 grid gap-6 lg:grid-cols-[.7fr_1.5fr]">
         <div className="space-y-6">
-          <SectionCard title="Tiểu sử">
-            <p className="leading-7 text-muted">
-              Sinh viên năm 3 chuyên ngành Kỹ thuật phần mềm. Đam mê lập trình
-              web, UI/UX và hoạt động cộng đồng.
-            </p>
-          </SectionCard>
-          <SectionCard title="Sở thích">
-            <div className="flex flex-wrap gap-2">
-              {[
-                "Web Development",
-                "Photography",
-                "Basketball",
-                "UI/UX Design",
-                "Open Source",
-              ].map((x) => (
-                <span key={x} className="status-info">
-                  {x}
-                </span>
-              ))}
+          <SectionCard title="Thông tin tài khoản">
+            <div className="grid gap-3 text-sm">
+              <div>
+                <div className="font-semibold text-muted">Email</div>
+                <div className="mt-1 font-bold">{profile?.email || "-"}</div>
+              </div>
+              <div>
+                <div className="font-semibold text-muted">Mã số sinh viên</div>
+                <div className="mt-1 font-bold">
+                  {profile?.studentCode || "-"}
+                </div>
+              </div>
+              <div>
+                <div className="font-semibold text-muted">Số điện thoại</div>
+                <div className="mt-1 font-bold">{profile?.phone || "-"}</div>
+              </div>
             </div>
+          </SectionCard>
+          <SectionCard title="Vai trò hệ thống">
+            <span className="status-info">
+              {getRoleLabel(profile, location.pathname)}
+            </span>
           </SectionCard>
         </div>
         <div className="space-y-6">
@@ -279,65 +392,233 @@ function ActivityList() {
   );
 }
 export function EditProfilePage() {
+  const location = useLocation();
+  const paths = getAccountPaths(location.pathname);
+  const [profile, setProfileState] = useState<UserProfile | null>(() =>
+    getProfile(),
+  );
+  const [fullName, setFullName] = useState(profile?.fullName ?? "");
+  const [phone, setPhone] = useState(profile?.phone ?? "");
+  const [avatarUrl, setAvatarUrl] = useState(profile?.avatarUrl ?? "");
+  const [loading, setLoading] = useState(!profile);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadProfile() {
+      setLoading(true);
+      setError("");
+
+      try {
+        const data = await authApi.getMe();
+        if (ignore) return;
+
+        setProfileState(data);
+        setFullName(data.fullName);
+        setPhone(data.phone ?? "");
+        setAvatarUrl(data.avatarUrl ?? "");
+        setProfile(data);
+      } catch (err) {
+        if (ignore) return;
+
+        setError(err instanceof Error ? err.message : "Không tải được hồ sơ.");
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    }
+
+    loadProfile();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+
+    const normalizedPhone = phone.trim().replace(/\s+/g, "");
+
+    if (!fullName.trim()) {
+      setError("Vui lòng nhập họ và tên.");
+      setSuccess("");
+      return;
+    }
+
+    if (
+      normalizedPhone &&
+      !/^(0(3|5|7|8|9)\d{8}|\+84(3|5|7|8|9)\d{8})$/.test(normalizedPhone)
+    ) {
+      setError("Số điện thoại không hợp lệ.");
+      setSuccess("");
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const updated = await authApi.updateMe({
+        fullName: fullName.trim(),
+        phone: normalizedPhone || undefined,
+        avatarUrl: avatarUrl.trim() || undefined,
+      });
+
+      setProfileState(updated);
+      setFullName(updated.fullName);
+      setPhone(updated.phone ?? "");
+      setAvatarUrl(updated.avatarUrl ?? "");
+      setProfile(updated);
+      setSuccess("Cập nhật hồ sơ thành công.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Cập nhật hồ sơ thất bại.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const initials = getInitials(fullName || profile?.username);
+
   return (
     <main className="page-shell max-w-5xl">
       <PageTitle
         title="Chỉnh sửa hồ sơ"
         description="Cập nhật thông tin cá nhân và cách bạn xuất hiện trong cộng đồng ClubHub."
       />
-      <form className="space-y-6">
+      <form onSubmit={submit} className="space-y-6">
         <section className="card flex flex-col items-center gap-5 p-6 sm:flex-row">
-          <div className="relative grid h-28 w-28 place-items-center rounded-full bg-ink text-3xl font-bold text-white">
-            NA
-            <button
-              type="button"
-              className="absolute bottom-0 right-0 grid h-10 w-10 place-items-center rounded-full bg-primary text-white"
-            >
+          <div className="relative grid h-28 w-28 place-items-center overflow-hidden rounded-full bg-ink text-3xl font-bold text-white">
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt={fullName}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              initials
+            )}
+            <span className="absolute bottom-0 right-0 grid h-10 w-10 place-items-center rounded-full bg-primary text-white">
               <Camera className="h-5 w-5" />
-            </button>
+            </span>
           </div>
-          <div>
+          <div className="w-full">
             <h2 className="text-xl font-bold">Ảnh đại diện</h2>
             <p className="mt-1 text-sm text-muted">
-              JPG, PNG hoặc WEBP. Tối đa 5MB.
+              Dán URL ảnh đại diện. Sau này có thể thay bằng upload file.
             </p>
-            <button type="button" className="btn-secondary mt-4">
-              Thay đổi ảnh
-            </button>
+            <input
+              className="input mt-4"
+              placeholder="https://..."
+              value={avatarUrl}
+              onChange={(e) => {
+                setAvatarUrl(e.target.value);
+                setError("");
+                setSuccess("");
+              }}
+            />
           </div>
+        </section>
+        <section className="card flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-4">
+            <div className="grid h-12 w-12 place-items-center rounded-2xl bg-primary-soft text-primary">
+              <LockKeyhole className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="font-bold text-ink">Đổi mật khẩu</h2>
+              <p className="mt-1 text-sm text-muted">
+                Cập nhật mật khẩu đăng nhập để bảo vệ tài khoản của bạn.
+              </p>
+            </div>
+          </div>
+          <Link to={paths.security} className="btn-secondary">
+            Đổi mật khẩu
+          </Link>
         </section>
         <section className="card grid gap-5 p-6 sm:grid-cols-2">
           <label>
             <span className="label">Họ và tên</span>
-            <input className="input" defaultValue="Nguyễn Văn A" />
+            <input
+              className="input"
+              value={fullName}
+              onChange={(e) => {
+                setFullName(e.target.value);
+                setError("");
+                setSuccess("");
+              }}
+            />
           </label>
           <label>
             <span className="label">MSSV</span>
-            <input className="input bg-slate-100" value="SV123456" readOnly />
+            <input
+              className="input bg-slate-100"
+              value={profile?.studentCode ?? "-"}
+              readOnly
+            />
           </label>
           <label className="sm:col-span-2">
             <span className="label">Email sinh viên</span>
             <input
               className="input bg-slate-100"
-              value="a.nv@university.edu.vn"
+              value={profile?.email ?? "-"}
+              readOnly
+            />
+          </label>
+          <label>
+            <span className="label">Username</span>
+            <input
+              className="input bg-slate-100"
+              value={profile?.username ?? "-"}
+              readOnly
+            />
+          </label>
+          <label>
+            <span className="label">Vai trò hệ thống</span>
+            <input
+              className="input bg-slate-100"
+              value={getRoleLabel(profile, location.pathname)}
               readOnly
             />
           </label>
           <label className="sm:col-span-2">
-            <span className="label">Tiểu sử</span>
-            <textarea
-              className="input h-36 py-3"
-              defaultValue="Sinh viên năm 3 đam mê công nghệ và hoạt động ngoại khóa."
+            <span className="label">Số điện thoại</span>
+            <input
+              className="input"
+              placeholder="0900000000"
+              value={phone}
+              onChange={(e) => {
+                setPhone(e.target.value);
+                setError("");
+                setSuccess("");
+              }}
             />
           </label>
         </section>
+        {loading && (
+          <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-muted">
+            Đang tải thông tin hồ sơ...
+          </p>
+        )}
+        {error && (
+          <p className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+            {error}
+          </p>
+        )}
+        {success && (
+          <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+            {success}
+          </p>
+        )}
         <div className="flex justify-end gap-3">
-          <Link to="/profile" className="btn-secondary">
+          <Link to={paths.profile} className="btn-secondary">
             Hủy
           </Link>
-          <button type="button" className="btn-primary">
+          <button disabled={saving} className="btn-primary">
             <Save className="h-4 w-4" />
-            Lưu thay đổi
+            {saving ? "Đang lưu..." : "Lưu thay đổi"}
           </button>
         </div>
       </form>
@@ -345,55 +626,138 @@ export function EditProfilePage() {
   );
 }
 export function AccountSecurityPage() {
+  const navigate = useNavigate();
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const clearMessages = () => {
+    setError("");
+    setSuccess("");
+  };
+
+  const loginAgain = () => {
+    clearAuthSession();
+    sessionStorage.clear();
+    navigate("/login", {
+      replace: true,
+      state: { message: "Vui lòng đăng nhập lại bằng mật khẩu mới." },
+    });
+  };
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+
+    if (!currentPassword) {
+      setError("Vui lòng nhập mật khẩu hiện tại.");
+      setSuccess("");
+      return;
+    }
+
+    if (!newPassword) {
+      setError("Vui lòng nhập mật khẩu mới.");
+      setSuccess("");
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setError("Mật khẩu mới cần tối thiểu 6 ký tự.");
+      setSuccess("");
+      return;
+    }
+
+    if (!confirmPassword) {
+      setError("Vui lòng xác nhận mật khẩu mới.");
+      setSuccess("");
+      return;
+    }
+
+    if (confirmPassword !== newPassword) {
+      setError("Mật khẩu xác nhận không khớp.");
+      setSuccess("");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      await authApi.changePassword({
+        currentPassword,
+        newPassword,
+      });
+
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setSuccess("Cập nhật mật khẩu thành công.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Cập nhật mật khẩu thất bại.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <main className="page-shell">
       <PageTitle
         title="Bảo mật tài khoản"
-        description="Quản lý mật khẩu, phiên đăng nhập và khu vực nguy hiểm."
+        description="Quản lý mật khẩu và các thiết lập bảo vệ tài khoản."
       />
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-6">
         <SectionCard title="Đổi mật khẩu">
-          <div className="space-y-4">
-            {["Mật khẩu hiện tại", "Mật khẩu mới", "Xác nhận mật khẩu mới"].map(
-              (x) => (
-                <label key={x}>
-                  <span className="label">{x}</span>
-                  <input
-                    type="password"
-                    className="input"
-                    defaultValue="password"
-                  />
-                </label>
-              ),
+          <form onSubmit={submit} className="space-y-4">
+            <label>
+              <span className="label">Mật khẩu hiện tại</span>
+              <input
+                type="password"
+                className="input"
+                value={currentPassword}
+                onChange={(e) => {
+                  setCurrentPassword(e.target.value);
+                  clearMessages();
+                }}
+              />
+            </label>
+            <label>
+              <span className="label">Mật khẩu mới</span>
+              <input
+                type="password"
+                className="input"
+                value={newPassword}
+                onChange={(e) => {
+                  setNewPassword(e.target.value);
+                  clearMessages();
+                }}
+              />
+            </label>
+            <label>
+              <span className="label">Xác nhận mật khẩu mới</span>
+              <input
+                type="password"
+                className="input"
+                value={confirmPassword}
+                onChange={(e) => {
+                  setConfirmPassword(e.target.value);
+                  clearMessages();
+                }}
+              />
+            </label>
+            {error && (
+              <p className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+                {error}
+              </p>
             )}
-            <button className="btn-primary">Cập nhật mật khẩu</button>
-          </div>
-        </SectionCard>
-        <SectionCard title="Phiên đăng nhập đang hoạt động">
-          <div className="space-y-3">
-            {["MacBook Pro M2", "iPhone 15 Pro", "Windows PC - Library"].map(
-              (device, i) => (
-                <div
-                  key={device}
-                  className="flex items-center gap-4 rounded-xl border p-4"
-                >
-                  <Laptop className="text-primary" />
-                  <div>
-                    <div className="font-bold">{device}</div>
-                    <div className="text-sm text-muted">
-                      {i ? "2 giờ trước" : "Hiện tại"}
-                    </div>
-                  </div>
-                  {i > 0 && <LogOut className="ml-auto text-red-600" />}
-                </div>
-              ),
-            )}
-            <button className="btn-info w-full">
-              Đăng xuất khỏi tất cả thiết bị
+            <button disabled={loading} className="btn-primary">
+              {loading ? "Đang cập nhật..." : "Cập nhật mật khẩu"}
             </button>
-          </div>
+          </form>
         </SectionCard>
-        <section className="card border-red-200 bg-red-50 p-6 lg:col-span-2">
+        <section className="card border-red-200 bg-red-50 p-6">
           <h2 className="text-xl font-bold text-red-800">Khu vực nguy hiểm</h2>
           <p className="mt-2 text-sm text-red-700">
             Xóa tài khoản sẽ xóa dữ liệu cá nhân và lịch sử tham gia.
@@ -403,6 +767,27 @@ export function AccountSecurityPage() {
           </button>
         </section>
       </div>
+      {success && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 text-center shadow-2xl">
+            <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-emerald-100 text-emerald-700">
+              <CheckCircle2 className="h-7 w-7" />
+            </div>
+            <h2 className="mt-4 text-xl font-bold text-ink">
+              Đổi mật khẩu thành công
+            </h2>
+            <p className="mt-2 text-sm text-muted">{success}</p>
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              <Link to="/dashboard" className="btn-secondary justify-center">
+                Về trang chính
+              </Link>
+              <button type="button" onClick={loginAgain} className="btn-primary">
+                Đăng nhập lại
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

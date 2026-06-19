@@ -8,6 +8,12 @@ export function setAuthSession(data: LoginResponse) {
   localStorage.setItem(ACCESS_TOKEN_KEY, data.accessToken);
   localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
   localStorage.setItem(PROFILE_KEY, JSON.stringify(data.profile));
+  window.dispatchEvent(new Event("clubhub_profile_updated"));
+}
+
+export function setAuthTokens(accessToken: string, refreshToken: string) {
+  localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+  localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
 }
 
 export function getAccessToken() {
@@ -20,15 +26,28 @@ export function getRefreshToken() {
 
 export function getProfile(): UserProfile | null {
   const raw = localStorage.getItem(PROFILE_KEY);
-  return raw ? JSON.parse(raw) : null;
+
+  if (!raw) return null;
+
+  try {
+    return JSON.parse(raw) as UserProfile;
+  } catch {
+    return null;
+  }
 }
 
 export function clearAuthSession() {
   localStorage.removeItem(ACCESS_TOKEN_KEY);
   localStorage.removeItem(REFRESH_TOKEN_KEY);
   localStorage.removeItem(PROFILE_KEY);
+  window.dispatchEvent(new Event("clubhub_profile_updated"));
 
   // Xóa key mock cũ nếu còn.
   localStorage.removeItem("clubhub_user");
   localStorage.removeItem("clubhub_role");
+}
+
+export function setProfile(profile: UserProfile) {
+  localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+  window.dispatchEvent(new Event("clubhub_profile_updated"));
 }

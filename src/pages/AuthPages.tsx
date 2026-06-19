@@ -1,7 +1,8 @@
 ﻿import { FormEvent, useState } from "react";
 import { authApi } from "../api/authApi";
+import { membershipApi } from "../api/membershipApi";
 import { setAuthSession } from "../api/authStorage";
-
+import { hasClubAdminPermission } from "../clubPermissions";
 import {
   CheckCircle2,
   Eye,
@@ -11,7 +12,12 @@ import {
   ShieldCheck,
   UserRound,
 } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import {
+  Link,
+  useLocation,
+  useNavigate,
+  useSearchParams,
+} from "react-router-dom";
 import { AuthShell, Brand } from "../components";
 function Field({
   label,
@@ -68,6 +74,14 @@ function Field({
 }
 export function LoginPage({ compact = false }: { compact?: boolean }) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const locationMessage =
+    location.state &&
+    typeof location.state === "object" &&
+    "message" in location.state
+      ? String((location.state as { message?: string }).message ?? "")
+      : "";
+  const locationMessageIsSuccess = locationMessage.includes("thành công");
   const [loading, setLoading] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -111,11 +125,34 @@ const [formError, setFormError] = useState("");
 
     setAuthSession(data);
 
-    if (data.profile.systemRole === "UniversityAdmin") {
-      navigate("/system-admin", { replace: true });
-    } else {
-      navigate("/dashboard", { replace: true });
-    }
+    const requestedPath =
+      location.state &&
+      typeof location.state === "object" &&
+      "from" in location.state
+        ? String((location.state as { from?: string }).from ?? "")
+        : "";
+    const isUniversityAdmin = data.profile.systemRole === "UniversityAdmin";
+    const memberships = isUniversityAdmin
+      ? []
+      : await membershipApi.getMyMemberships().catch(() => []);
+    const hasClubAdminAccess = hasClubAdminPermission(memberships);
+    const defaultPath = isUniversityAdmin
+      ? "/system-admin"
+      : hasClubAdminAccess
+        ? "/club-admin"
+        : "/dashboard";
+    const canUseRequestedPath =
+      requestedPath.startsWith("/") &&
+      !requestedPath.startsWith("/login") &&
+      (isUniversityAdmin
+        ? requestedPath.startsWith("/system-admin")
+        : requestedPath.startsWith("/club-admin")
+          ? hasClubAdminAccess
+          : !requestedPath.startsWith("/system-admin"));
+
+    navigate(canUseRequestedPath ? requestedPath : defaultPath, {
+      replace: true,
+    });
   } catch (err) {
     setFormError(err instanceof Error ? err.message : "Đăng nhập thất bại.");
   } finally {
@@ -159,6 +196,17 @@ const [formError, setFormError] = useState("");
           }}
           error={fieldErrors.password}
         />      
+        {locationMessage && (
+          <p
+            className={`rounded-xl px-4 py-3 text-sm font-medium ${
+              locationMessageIsSuccess
+                ? "bg-emerald-50 text-emerald-700"
+                : "bg-primary-soft text-primary-dark"
+            }`}
+          >
+            {locationMessage}
+          </p>
+        )}
         {formError && (
           <p className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
             {formError}
@@ -179,6 +227,7 @@ const [formError, setFormError] = useState("");
         <button disabled={loading} className="btn-primary w-full">
           {loading ? "Đang đăng nhập..." : "Đăng nhập ngay"}
         </button>
+
       </form>
       <p className="mt-6 text-center text-sm">
         Bạn chưa có tài khoản?{" "}
@@ -427,6 +476,33 @@ export function RegisterPage() {
 }
 export function ForgotPasswordPage() {
   const [sent, setSent] = useState(false);
+  const [email, setEmail] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+
+    if (!email.trim()) {
+      setError("Vui lòng nhập email.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    try {
+      await authApi.forgotPassword({ email: email.trim() });
+      setSent(true);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Gửi email khôi phục thất bại.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <AuthShell headline="Khôi phục truy cập, tiếp tục kết nối.">
       <div className="w-full max-w-lg">
@@ -440,34 +516,30 @@ export function ForgotPasswordPage() {
         {sent ? (
           <div className="card mt-7 p-7">
             <CheckCircle2 className="h-10 w-10 text-emerald-600" />
-            <h2 className="mt-4 text-xl font-bold">
-              Đã gởi email khôi phục
-            </h2>
+            <h2 className="mt-4 text-xl font-bold">Đã gửi email khôi phục</h2>
             <p className="mt-2 text-sm text-muted">
-              Hãy kiểm tra hộp thư. Liên kết có hiệu lực trong 15
-              phút.
+              Hãy kiểm tra hộp thư. Liên kết có hiệu lực trong 15 phút.
             </p>
-            <Link to="/reset-password" className="btn-primary mt-6">
-              Mở màn hình đặt lại
-            </Link>
           </div>
         ) : (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              setSent(true);
-            }}
-            className="card mt-7 space-y-5 p-7"
-          >
+          <form onSubmit={submit} className="card mt-7 space-y-5 p-7">
             <Field
               label="Email trường"
               placeholder="a.nv@university.edu.vn"
               icon={Mail}
-              value=""
-              onChange={() => {}}
+              value={email}
+              onChange={(value) => {
+                setEmail(value);
+                setError("");
+              }}
             />
-            <button className="btn-primary w-full">
-              Gửi liên kết khôi phục
+            {error && (
+              <p className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+                {error}
+              </p>
+            )}
+            <button disabled={loading} className="btn-primary w-full">
+              {loading ? "Đang gửi..." : "Gửi liên kết khôi phục"}
             </button>
           </form>
         )}
@@ -478,38 +550,104 @@ export function ForgotPasswordPage() {
     </AuthShell>
   );
 }
+
 export function ResetPasswordPage() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const token = searchParams.get("token") ?? "";
+
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+
+    if (!token) {
+      setError("Liên kết đặt lại mật khẩu không hợp lệ.");
+      return;
+    }
+
+    if (!password) {
+      setError("Vui lòng nhập mật khẩu mới.");
+      return;
+    }
+
+    if (password.length < 6) {
+      setError("Mật khẩu cần tối thiểu 6 ký tự.");
+      return;
+    }
+
+    if (!confirmPassword) {
+      setError("Vui lòng xác nhận mật khẩu.");
+      return;
+    }
+
+    if (confirmPassword !== password) {
+      setError("Mật khẩu xác nhận không khớp.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    try {
+      await authApi.resetPassword({
+        token,
+        newPassword: password,
+      });
+
+      navigate("/login", {
+        replace: true,
+        state: { message: "Đặt lại mật khẩu thành công. Vui lòng đăng nhập." },
+      });
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Đặt lại mật khẩu thất bại.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <AuthShell headline="Một mật khẩu mới, một khởi đầu an toàn.">
-      <form className="card w-full max-w-lg space-y-5 p-7">
+      <form onSubmit={submit} className="card w-full max-w-lg space-y-5 p-7">
         <h1 className="text-2xl font-extrabold">Đặt lại mật khẩu</h1>
         <p className="text-sm text-muted">
-          Mật khẩu cần tối thiểu 6 ký tự, gồm chữ hoa và ký
-          tự đặc biệt.
+          Mật khẩu cần tối thiểu 6 ký tự, gồm chữ hoa và ký tự đặc biệt.
         </p>
         <Field
           label="Mật khẩu mới"
           type="password"
           placeholder="Nhập mật khẩu mới"
           icon={KeyRound}
-          value=""
-          onChange={() => {}}
+          value={password}
+          onChange={(value) => {
+            setPassword(value);
+            setError("");
+          }}
         />
         <Field
           label="Xác nhận mật khẩu"
           type="password"
           placeholder="Nhập lại mật khẩu"
           icon={KeyRound}
-          value=""
-          onChange={() => {}}
+          value={confirmPassword}
+          onChange={(value) => {
+            setConfirmPassword(value);
+            setError("");
+          }}
         />
-        <div className="rounded-xl bg-emerald-100 p-4 text-sm text-emerald-700">
-          <CheckCircle2 className="mr-2 inline h-4 w-4" />
-          Mật khẩu đáp ứng yêu cầu bảo mật.
-        </div>
-        <Link to="/login" className="btn-primary w-full">
-          Cập nhật mật khẩu
-        </Link>
+        {error && (
+          <p className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+            {error}
+          </p>
+        )}
+        <button disabled={loading} className="btn-primary w-full">
+          {loading ? "Đang cập nhật..." : "Cập nhật mật khẩu"}
+        </button>
       </form>
     </AuthShell>
   );

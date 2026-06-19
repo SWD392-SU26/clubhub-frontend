@@ -27,7 +27,10 @@ import {
   History,
   ShieldCheck,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { membershipApi } from "../api/membershipApi";
+import { getPrimaryAdminMembership } from "../clubPermissions";
 import { auditLogs, clubs, events, members, proposals, users } from "../data";
 import {
   DataTable,
@@ -38,13 +41,48 @@ import {
   StatCard,
   StatusBadge,
 } from "../components";
+import { getProfileDisplayName, useCurrentProfile } from "../useCurrentProfile";
+
 export function ClubAdminDashboard() {
+  const profile = useCurrentProfile();
+  const displayName = getProfileDisplayName(profile);
+  const [adminClubName, setAdminClubName] = useState("");
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadAdminClub() {
+      try {
+        const memberships = await membershipApi.getMyMemberships();
+        const adminMembership = getPrimaryAdminMembership(memberships);
+
+        if (!ignore) {
+          setAdminClubName(adminMembership?.clubName ?? "");
+        }
+      } catch {
+        if (!ignore) {
+          setAdminClubName("");
+        }
+      }
+    }
+
+    loadAdminClub();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
   return (
     <main className="page-shell">
       <PageTitle
         eyebrow="CLUB_ADMIN"
-        title="Tổng quan CLB Guitar"
-        description="Theo dõi thành viên, sự kiện và hoạt động vận hành."
+        title={`Chào ${displayName}!`}
+        description={
+          adminClubName
+            ? `Bạn đang quản trị ${adminClubName}.`
+            : "Theo dõi thành viên, sự kiện và hoạt động vận hành."
+        }
       />
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
@@ -744,11 +782,14 @@ export function ClubStatusPage() {
   );
 }
 export function SystemAdminDashboard() {
+  const profile = useCurrentProfile();
+  const displayName = getProfileDisplayName(profile);
+
   return (
     <main className="page-shell">
       <PageTitle
         eyebrow="SYSTEM_ADMIN"
-        title="Bảng điều khiển hệ thống"
+        title={`Chào ${displayName}!`}
         description="Quản lý toàn bộ nền tảng ClubHub."
         actions={
           <Link to="/system-admin/proposals" className="btn-primary">
