@@ -9,7 +9,17 @@ import {
   Filter,
   Star,
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { getAccessToken } from "../api/authStorage";
+import { clubApi } from "../api/clubApi";
+import { membershipApi } from "../api/membershipApi";
+import type {
+  ClubCategory,
+  ClubDetail,
+  ClubSummary,
+  MyMembership,
+} from "../types/club";
 import { clubs, events } from "../data";
 import {
   DataTable,
@@ -21,11 +31,110 @@ import {
   StatCard,
   StatusBadge,
 } from "../components";
-function ClubTile({ club }: { club: (typeof clubs)[number] }) {
+
+const fallbackClubImage =
+  "https://images.unsplash.com/photo-1542744173-8e7e53415bb0?auto=format&fit=crop&w=1200&q=80";
+
+type ClubTileData = {
+  id: string;
+  name: string;
+  category: string;
+  description?: string | null;
+  logoUrl?: string | null;
+  coverImageUrl?: string | null;
+  image?: string;
+  memberCount?: number;
+  members?: number;
+};
+
+const clubCategoryOptions: Array<{
+  label: string;
+  value?: ClubCategory;
+}> = [
+  { label: "Tất cả" },
+  { label: "Học thuật", value: "Academic" },
+  { label: "Công nghệ", value: "Technology" },
+  { label: "Thể thao", value: "Sports" },
+  { label: "Nghệ thuật", value: "Arts" },
+  { label: "Tình nguyện", value: "Volunteer" },
+  { label: "Kỹ năng", value: "SoftSkills" },
+  { label: "Truyền thông", value: "Media" },
+  { label: "Khởi nghiệp", value: "Entrepreneurship" },
+];
+
+function getClubImage(club: ClubTileData) {
+  return club.coverImageUrl || club.logoUrl || club.image || fallbackClubImage;
+}
+
+function isGuid(value?: string) {
+  return Boolean(
+    value?.match(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    ),
+  );
+}
+
+function getMockClubDetail(id?: string): ClubDetail | null {
+  const mockClub = clubs.find((club) => club.id === id);
+
+  if (!mockClub) return null;
+
+  return {
+    id: mockClub.id,
+    name: mockClub.name,
+    category: mockClub.category,
+    description: mockClub.description,
+    logoUrl: null,
+    coverImageUrl: mockClub.image,
+    status: mockClub.status,
+    memberCount: mockClub.members,
+    officers: [
+      {
+        userId: "mock-admin",
+        fullName: mockClub.admin,
+        avatarUrl: null,
+        roleInClub: "ClubAdmin",
+      },
+    ],
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function clubSummaryToDetail(club: ClubSummary): ClubDetail {
+  return {
+    ...club,
+    officers: [],
+  };
+}
+
+async function getClubDetailFallback(id?: string) {
+  const mockClub = getMockClubDetail(id);
+
+  if (mockClub) return mockClub;
+  if (!id || !isGuid(id)) return null;
+
+  const publicClubs = await clubApi
+    .getClubs({ page: 1, pageSize: 100 })
+    .catch(() => null);
+  const publicClub = publicClubs?.items.find((club) => club.id === id);
+
+  if (publicClub) return clubSummaryToDetail(publicClub);
+
+  if (!getAccessToken()) return null;
+
+  const myClubs = await clubApi.getMyClubs(1, 100).catch(() => null);
+  const myClub = myClubs?.items.find((club) => club.id === id);
+
+  return myClub ? clubSummaryToDetail(myClub) : null;
+}
+
+function ClubTile({ club }: { club: ClubTileData }) {
+  const memberCount = club.memberCount ?? club.members ?? 0;
+
   return (
     <article className="card overflow-hidden transition hover:-translate-y-1 hover:shadow-lift">
       <img
-        src={club.image}
+        src={getClubImage(club)}
         alt={club.name}
         className="h-44 w-full object-cover"
       />
@@ -40,7 +149,7 @@ function ClubTile({ club }: { club: (typeof clubs)[number] }) {
           </div>
         </div>
         <div className="mt-5 flex items-center justify-between border-t pt-4 text-sm">
-          <span className="text-muted">{club.members} thành viên</span>
+          <span className="text-muted">{memberCount} thành viên</span>
           <Link className="font-bold text-primary" to={`/clubs/${club.id}`}>
             Chi tiết
           </Link>
@@ -50,6 +159,34 @@ function ClubTile({ club }: { club: (typeof clubs)[number] }) {
   );
 }
 export function HomePage() {
+  const [featuredClubs, setFeaturedClubs] = useState<ClubSummary[]>([]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadFeaturedClubs() {
+      try {
+        const result = await clubApi.getClubs({ page: 1, pageSize: 3 });
+        if (!ignore) {
+          setFeaturedClubs(result.items);
+        }
+      } catch {
+        if (!ignore) {
+          setFeaturedClubs([]);
+        }
+      }
+    }
+
+    loadFeaturedClubs();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  const visibleFeaturedClubs =
+    featuredClubs.length > 0 ? featuredClubs : clubs.slice(0, 3);
+
   return (
     <main>
       <section className="hero-grid overflow-hidden bg-white">
@@ -155,7 +292,7 @@ export function HomePage() {
             }
           />
           <div className="grid gap-6 md:grid-cols-3">
-            {clubs.slice(0, 3).map((club) => (
+            {visibleFeaturedClubs.map((club) => (
               <ClubTile key={club.id} club={club} />
             ))}
           </div>
@@ -268,6 +405,60 @@ export function StyleGuidePage() {
   );
 }
 export function ClubsExplorePage() {
+  const [clubList, setClubList] = useState<ClubSummary[]>([]);
+  const [searchText, setSearchText] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<
+    ClubCategory | undefined
+  >();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(searchText.trim());
+    }, 350);
+
+    return () => window.clearTimeout(timer);
+  }, [searchText]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadClubs() {
+      setLoading(true);
+      setError("");
+
+      try {
+        const result = await clubApi.getClubs({
+          category: selectedCategory,
+          searchTerm: debouncedSearch || undefined,
+          page: 1,
+          pageSize: 12,
+        });
+        if (!ignore) {
+          setClubList(result.items);
+        }
+      } catch (err) {
+        if (!ignore) {
+          setError(
+            err instanceof Error ? err.message : "Không tải được danh sách CLB.",
+          );
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadClubs();
+
+    return () => {
+      ignore = true;
+    };
+  }, [debouncedSearch, selectedCategory]);
+
   return (
     <main className="page-shell">
       <PageTitle
@@ -277,34 +468,234 @@ export function ClubsExplorePage() {
       />
       <FilterBar
         placeholder="Tìm kiếm tên CLB hoặc từ khóa..."
-        actions={[
-          "Tất cả",
-          "Học thuật",
-          "Công nghệ",
-          "Thể thao",
-          "Nghệ thuật",
-          "Tình nguyện",
-        ].map((x) => (
-          <button key={x} className="btn-secondary">
-            {x}
+        value={searchText}
+        onChange={setSearchText}
+        onSearch={() => setDebouncedSearch(searchText.trim())}
+        actions={clubCategoryOptions.map((option) => (
+          <button
+            key={option.label}
+            type="button"
+            onClick={() => setSelectedCategory(option.value)}
+            className={
+              selectedCategory === option.value ? "btn-primary" : "btn-secondary"
+            }
+          >
+            {option.label}
           </button>
         ))}
       />
-      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
-        {clubs.map((club) => (
-          <ClubTile key={club.id} club={club} />
-        ))}
-      </div>
+      {loading && (
+        <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-muted">
+          Đang tải danh sách câu lạc bộ...
+        </p>
+      )}
+      {error && (
+        <p className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+          {error}
+        </p>
+      )}
+      {!loading && !error && clubList.length === 0 && (
+        <EmptyState
+          title="Chưa tìm thấy câu lạc bộ phù hợp"
+          description="Thử đổi từ khóa tìm kiếm hoặc chọn lĩnh vực khác để khám phá thêm."
+        />
+      )}
+      {!loading && !error && clubList.length > 0 && (
+        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+          {clubList.map((club) => (
+            <ClubTile key={club.id} club={club} />
+          ))}
+        </div>
+      )}
     </main>
   );
 }
 export function ClubDetailPage() {
-  const club = clubs[0];
+  const { id } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [club, setClub] = useState<ClubDetail | null>(null);
+  const [currentMembership, setCurrentMembership] =
+    useState<MyMembership | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [joining, setJoining] = useState(false);
+  const [joinMessage, setJoinMessage] = useState("");
+  const [joinSuccess, setJoinSuccess] = useState(false);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadClubDetail() {
+      if (!id) {
+        setError("Không tìm thấy mã câu lạc bộ.");
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      setError("");
+
+      try {
+        if (!isGuid(id)) {
+          const mockClub = getMockClubDetail(id);
+
+          if (!mockClub) {
+            throw new Error("Câu lạc bộ không tồn tại hoặc đã bị ẩn.");
+          }
+
+          if (!ignore) {
+            setClub(mockClub);
+            setCurrentMembership(null);
+          }
+
+          return;
+        }
+
+        const data = await clubApi.getClubById(id);
+        const memberships = getAccessToken()
+          ? await membershipApi.getMyMemberships().catch(() => [])
+          : [];
+
+        if (!ignore) {
+          setClub(data);
+          setCurrentMembership(
+            memberships.find((membership) => membership.clubId === data.id) ??
+              null,
+          );
+        }
+      } catch (err) {
+        if (!ignore) {
+          const fallbackClub = await getClubDetailFallback(id);
+
+          if (fallbackClub) {
+            const memberships = getAccessToken()
+              ? await membershipApi.getMyMemberships().catch(() => [])
+              : [];
+
+            if (ignore) return;
+
+            setClub(fallbackClub);
+            setCurrentMembership(null);
+            setCurrentMembership(
+              memberships.find(
+                (membership) => membership.clubId === fallbackClub.id,
+              ) ?? null,
+            );
+            setError("");
+          } else {
+            setError(err instanceof Error ? err.message : "Không tải được CLB.");
+          }
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadClubDetail();
+
+    return () => {
+      ignore = true;
+    };
+  }, [id]);
+
+  const joinClub = async () => {
+    if (!club) return;
+
+    if (!getAccessToken()) {
+      navigate("/login", {
+        state: {
+          from: location.pathname,
+          message: "Vui lòng đăng nhập để gửi yêu cầu tham gia CLB.",
+        },
+      });
+      return;
+    }
+
+    if (currentMembership?.status === "Pending") {
+      setJoinSuccess(true);
+      setJoinMessage("Bạn đã gửi yêu cầu tham gia CLB này. Vui lòng chờ duyệt.");
+      return;
+    }
+
+    if (currentMembership?.status === "Approved") {
+      setJoinSuccess(true);
+      setJoinMessage("Bạn đã là thành viên của CLB này.");
+      return;
+    }
+
+    setJoining(true);
+    setJoinMessage("");
+    setJoinSuccess(false);
+
+    try {
+      await membershipApi.joinClub(club.id);
+      setCurrentMembership({
+        clubId: club.id,
+        clubName: club.name,
+        clubLogo: club.logoUrl,
+        roleInClub: "Member",
+        status: "Pending",
+        requestedAt: new Date().toISOString(),
+        joinedAt: null,
+      });
+      setJoinSuccess(true);
+      setJoinMessage("Đã gửi yêu cầu tham gia. Vui lòng chờ duyệt.");
+    } catch (err) {
+      setJoinSuccess(false);
+      setJoinMessage(
+        err instanceof Error ? err.message : "Gửi yêu cầu tham gia thất bại.",
+      );
+    } finally {
+      setJoining(false);
+    }
+  };
+
+  const joinButtonLabel =
+    club && !isGuid(club.id)
+      ? "Đang xem thông tin"
+      : currentMembership?.status === "Pending"
+      ? "Đã gửi yêu cầu"
+      : currentMembership?.status === "Approved"
+        ? "Đã là thành viên"
+        : joining
+          ? "Đang gửi..."
+          : "Gửi yêu cầu tham gia";
+  const joinButtonDisabled =
+    Boolean(club && !isGuid(club.id)) ||
+    joining ||
+    currentMembership?.status === "Pending" ||
+    currentMembership?.status === "Approved";
+  const officers = club?.officers ?? [];
+
+  if (loading) {
+    return (
+      <main className="page-shell">
+        <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-muted">
+          Đang tải thông tin câu lạc bộ...
+        </p>
+      </main>
+    );
+  }
+
+  if (error || !club) {
+    return (
+      <main className="page-shell">
+        <EmptyState
+          title="Không tải được câu lạc bộ"
+          description={error || "Câu lạc bộ không tồn tại hoặc đã bị ẩn."}
+        />
+      </main>
+    );
+  }
+
   return (
     <main className="page-shell">
       <section className="card overflow-hidden">
         <img
-          src={club.image}
+          src={getClubImage(club)}
           className="h-72 w-full object-cover"
           alt={club.name}
         />
@@ -315,28 +706,50 @@ export function ClubDetailPage() {
               <h1 className="mt-3 text-4xl font-extrabold">{club.name}</h1>
               <p className="mt-2 max-w-3xl text-muted">{club.description}</p>
             </div>
-            <button className="btn-primary">Gửi yêu cầu tham gia</button>
+            <button
+              disabled={joinButtonDisabled}
+              onClick={joinClub}
+              className="btn-primary"
+            >
+              {joinButtonLabel}
+            </button>
           </div>
+          {joinMessage && (
+            <p
+              className={`mt-5 rounded-xl px-4 py-3 text-sm font-medium ${
+                joinSuccess
+                  ? "bg-emerald-50 text-emerald-700"
+                  : "bg-red-50 text-red-600"
+              }`}
+            >
+              {joinMessage}
+            </p>
+          )}
         </div>
       </section>
       <div className="mt-6 grid gap-6 lg:grid-cols-[1.4fr_.8fr]">
         <div className="space-y-6">
           <SectionCard title="Sứ mệnh">
             <p className="leading-7 text-muted">
-              Tạo môi trường thực hành dự án, workshop hàng tuần và đội thi
-              nghiên cứu ứng dụng cho sinh viên yêu công nghệ.
+              {club.description ||
+                "Thông tin mô tả câu lạc bộ sẽ được cập nhật sau."}
             </p>
           </SectionCard>
-          <SectionCard title="Danh sách thành viên">
-            <DataTable
-              columns={["Tên thành viên", "MSSV", "Vai trò", "Trạng thái"]}
-              rows={membersPreview().map((m) => [
-                m.name,
-                m.code,
-                m.role,
-                <StatusBadge status={m.status} />,
-              ])}
-            />
+          <SectionCard title="Ban điều hành">
+            {officers.length > 0 ? (
+              <DataTable
+                columns={["Tên thành viên", "Vai trò"]}
+                rows={officers.map((officer) => [
+                  officer.fullName,
+                  <StatusBadge status={officer.roleInClub} />,
+                ])}
+              />
+            ) : (
+              <EmptyState
+                title="Chưa có ban điều hành"
+                description="Danh sách ban điều hành sẽ được cập nhật sau."
+              />
+            )}
           </SectionCard>
         </div>
         <aside className="space-y-6">
