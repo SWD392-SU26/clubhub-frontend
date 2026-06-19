@@ -1118,8 +1118,8 @@ export function SystemClubDetailPage() {
           ["Hồ sơ công khai", "Đang hiển thị trên trang khám phá CLB."],
           ["Kiểm duyệt nội dung", "Không có mô tả hoặc ảnh cần xử lý."],
           [
-            "Sẵn sàng backend",
-            "Các action có thể map API lock, archive, update admin.",
+            "Sẵn sàng vận hành",
+            "Các thao tác quản trị có thể thực hiện theo quyền được phân công.",
           ],
         ].map(([title, text]) => (
           <div key={title} className="card p-5">

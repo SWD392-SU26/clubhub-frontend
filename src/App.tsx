@@ -93,6 +93,7 @@ export default function App() {
             <Route path="/account/security" element={<AccountSecurityPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/my-clubs" element={<MyClubsPage />} />
+            <Route path="/my-clubs/:id" element={<ClubDetailPage />} />
             <Route path="/my-events" element={<MyEventsPage />} />
             <Route path="/join-requests" element={<JoinRequestsPage />} />
             <Route path="/club-proposals" element={<ClubProposalsPage />} />

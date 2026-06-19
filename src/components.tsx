@@ -70,6 +70,16 @@ export function Brand({
   );
 }
 
+function getInitials(value: string) {
+  return value
+    .trim()
+    .split(/\s+/)
+    .map((part) => part[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+}
+
 function LogoutButton({
   compact = false,
   className = "",
@@ -245,6 +255,76 @@ const publicLinks = [
 ];
 export function PublicHeader() {
   const [open, setOpen] = useState(false);
+  const [profile, setProfileState] = useState(() => getProfile());
+  const [hasAdminClub, setHasAdminClub] = useState(false);
+
+  useEffect(() => {
+    const syncProfile = () => setProfileState(getProfile());
+
+    window.addEventListener("storage", syncProfile);
+    window.addEventListener("clubhub_profile_updated", syncProfile);
+
+    return () => {
+      window.removeEventListener("storage", syncProfile);
+      window.removeEventListener("clubhub_profile_updated", syncProfile);
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    if (!profile || profile.systemRole === "UniversityAdmin") {
+      setHasAdminClub(false);
+      return () => {
+        active = false;
+      };
+    }
+
+    membershipApi
+      .getMyMemberships()
+      .then((memberships) => {
+        if (active) {
+          setHasAdminClub(Boolean(getPrimaryAdminMembership(memberships)));
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setHasAdminClub(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [profile?.id, profile?.systemRole]);
+
+  const isUniversityAdmin = profile?.systemRole === "UniversityAdmin";
+  const homePath = isUniversityAdmin
+    ? "/system-admin"
+    : hasAdminClub
+      ? "/club-admin"
+      : "/dashboard";
+  const profilePath = isUniversityAdmin
+    ? "/system-admin/profile"
+    : hasAdminClub
+      ? "/club-admin/profile"
+      : "/profile";
+  const editProfilePath = isUniversityAdmin
+    ? "/system-admin/profile/edit"
+    : hasAdminClub
+      ? "/club-admin/profile/edit"
+      : "/profile/edit";
+  const securityPath = isUniversityAdmin
+    ? "/system-admin/account/security"
+    : hasAdminClub
+      ? "/club-admin/account/security"
+      : "/account/security";
+  const workspace = isUniversityAdmin
+    ? "University Admin workspace"
+    : hasAdminClub
+      ? "Club Admin workspace"
+      : "Student workspace";
+
   return (
     <header className="sticky top-0 z-40 border-b bg-white/95 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
@@ -263,12 +343,30 @@ export function PublicHeader() {
           ))}
         </nav>
         <div className="hidden items-center gap-2 md:flex">
-          <Link to="/login" className="btn-ghost">
-            Đăng nhập
-          </Link>
-          <Link to="/register" className="btn-primary">
-            Tạo tài khoản
-          </Link>
+          {profile ? (
+            <>
+              <Link to={homePath} className="btn-ghost">
+                Trang chính
+              </Link>
+              <UserProfileMenu
+                name={profile.fullName}
+                initials={getInitials(profile.fullName)}
+                workspace={workspace}
+                profilePath={profilePath}
+                editProfilePath={editProfilePath}
+                securityPath={securityPath}
+              />
+            </>
+          ) : (
+            <>
+              <Link to="/login" className="btn-ghost">
+                Đăng nhập
+              </Link>
+              <Link to="/register" className="btn-primary">
+                Tạo tài khoản
+              </Link>
+            </>
+          )}
         </div>
         <button
           className="btn-ghost md:hidden"
@@ -295,9 +393,33 @@ export function PublicHeader() {
             {label}
           </Link>
         ))}
-        <Link to="/login" className="btn-primary mt-4 w-full">
-          Đăng nhập
-        </Link>
+        {profile ? (
+          <div className="mt-4 space-y-2 border-t border-slate-100 pt-4">
+            <Link
+              to={homePath}
+              onClick={() => setOpen(false)}
+              className="block rounded-xl px-4 py-3 font-semibold hover:bg-primary-soft"
+            >
+              Trang chính
+            </Link>
+            <Link
+              to={profilePath}
+              onClick={() => setOpen(false)}
+              className="block rounded-xl px-4 py-3 font-semibold hover:bg-primary-soft"
+            >
+              Hồ sơ cá nhân
+            </Link>
+            <LogoutButton className="w-full justify-start" />
+          </div>
+        ) : (
+          <Link
+            to="/login"
+            onClick={() => setOpen(false)}
+            className="btn-primary mt-4 w-full"
+          >
+            Đăng nhập
+          </Link>
+        )}
       </MobilePanel>
     </header>
   );
@@ -782,9 +904,15 @@ export function DataTable({
 }
 export function FilterBar({
   placeholder = "Tìm kiếm...",
+  value,
+  onChange,
+  onSearch,
   actions,
 }: {
   placeholder?: string;
+  value?: string;
+  onChange?: (value: string) => void;
+  onSearch?: () => void;
   actions?: ReactNode;
 }) {
   return (
@@ -794,6 +922,13 @@ export function FilterBar({
         <input
           className="w-full bg-transparent text-sm outline-none"
           placeholder={placeholder}
+          value={value}
+          onChange={(event) => onChange?.(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              onSearch?.();
+            }
+          }}
         />
       </div>
       <div className="flex flex-wrap gap-2">{actions}</div>
