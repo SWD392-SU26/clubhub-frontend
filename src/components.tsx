@@ -4,6 +4,7 @@ import {
   Bell,
   CalendarDays,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
   ClipboardCheck,
   FileChartColumn,
@@ -30,9 +31,11 @@ import {
   ScanLine,
   Building2,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { authApi } from "./api/authApi";
-import { clearAuthSession } from "./api/authStorage";
+import { clearAuthSession, getProfile } from "./api/authStorage";
+import { membershipApi } from "./api/membershipApi";
+import { getPrimaryAdminMembership } from "./clubPermissions";
 export const images = {
   campus:
     "https://images.unsplash.com/photo-1542744173-8e7e53415bb0?auto=format&fit=crop&w=1600&q=80",
@@ -42,10 +45,16 @@ export const images = {
   meeting:
     "https://images.unsplash.com/photo-1542744173-8e7e53415bb0?auto=format&fit=crop&w=1200&q=80",
 };
-export function Brand({ compact = false }: { compact?: boolean }) {
+export function Brand({
+  compact = false,
+  to = "/",
+}: {
+  compact?: boolean;
+  to?: string;
+}) {
   return (
     <Link
-      to="/"
+      to={to}
       className="flex items-center gap-2.5 font-extrabold tracking-tight text-ink"
     >
       <span
@@ -93,6 +102,112 @@ function LogoutButton({
       <LogOut className="h-5 w-5" />
       {!compact && <span>Đăng xuất</span>}
     </button>
+  );
+}
+
+function UserProfileMenu({
+  name,
+  initials,
+  workspace,
+  profilePath = "/profile",
+  editProfilePath = "/profile/edit",
+  securityPath = "/account/security",
+  buttonClassName = "",
+  menuClassName = "right-0 top-12",
+}: {
+  name: string;
+  initials: string;
+  workspace: string;
+  profilePath?: string;
+  editProfilePath?: string;
+  securityPath?: string;
+  buttonClassName?: string;
+  menuClassName?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [profile, setProfileState] = useState(() => getProfile());
+  const close = () => setOpen(false);
+  const displayName = profile?.fullName || profile?.username || name;
+  const displayInitials =
+    profile?.fullName || profile?.username
+      ? (profile.fullName || profile.username)
+          .trim()
+          .split(/\s+/)
+          .slice(-2)
+          .map((part) => part[0])
+          .join("")
+          .toUpperCase()
+      : initials;
+
+  useEffect(() => {
+    const syncProfile = () => setProfileState(getProfile());
+
+    window.addEventListener("clubhub_profile_updated", syncProfile);
+    window.addEventListener("storage", syncProfile);
+
+    return () => {
+      window.removeEventListener("clubhub_profile_updated", syncProfile);
+      window.removeEventListener("storage", syncProfile);
+    };
+  }, []);
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className={`flex items-center gap-2 rounded-full border border-slate-200 bg-white p-1 pr-2 shadow-sm transition hover:border-primary/40 hover:bg-primary-soft ${buttonClassName}`}
+        aria-expanded={open}
+        aria-label="Mở menu tài khoản"
+      >
+        <span className="grid h-9 w-9 place-items-center rounded-full bg-primary text-sm font-bold text-white">
+          {displayInitials}
+        </span>
+        <ChevronDown
+          className={`h-4 w-4 text-slate-500 transition ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+
+      {open && (
+        <div
+          className={`absolute z-50 w-64 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl ${menuClassName}`}
+        >
+          <div className="border-b border-slate-100 px-4 py-3">
+            <p className="text-sm font-bold text-ink">{displayName}</p>
+            <p className="text-xs text-muted">{workspace}</p>
+          </div>
+          <div className="grid p-2">
+            <Link
+              to={profilePath}
+              onClick={close}
+              className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-primary-soft hover:text-primary"
+            >
+              <UserRound className="h-4 w-4" />
+              Xem hồ sơ
+            </Link>
+            <Link
+              to={editProfilePath}
+              onClick={close}
+              className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-primary-soft hover:text-primary"
+            >
+              <Settings className="h-4 w-4" />
+              Chỉnh sửa hồ sơ
+            </Link>
+            <Link
+              to={securityPath}
+              onClick={close}
+              className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-primary-soft hover:text-primary"
+            >
+              <LockKeyhole className="h-4 w-4" />
+              Đổi mật khẩu
+            </Link>
+          </div>
+          <div className="border-t border-slate-100 p-2">
+            <LogoutButton className="w-full justify-start" />
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -246,7 +361,7 @@ export function StudentLayout() {
           <button className="btn-ghost md:hidden" onClick={() => setOpen(true)}>
             <Menu />
           </button>
-          <Brand />
+          <Brand to="/dashboard" />
           <nav className="hidden gap-5 md:flex">
             {studentNav.slice(0, 5).map(([to, label]) => (
               <NavLink
@@ -270,18 +385,16 @@ export function StudentLayout() {
           <Link to="/notifications" className="btn-ghost">
             <Bell className="h-5 w-5" />
           </Link>
-          <LogoutButton compact />
-          <Link
-            to="/profile"
-            className="grid h-10 w-10 place-items-center rounded-full bg-white/15 font-bold text-white"
-          >
-            MH
-          </Link>
+          <UserProfileMenu
+            name="Minh Hiếu"
+            initials="MH"
+            workspace="Student workspace"
+          />
         </div>
       </header>
       <MobilePanel open={open} onClose={() => setOpen(false)}>
         <div className="mb-6 flex items-center justify-between">
-          <Brand />
+          <Brand to="/dashboard" />
           <button className="btn-ghost" onClick={() => setOpen(false)}>
             <X />
           </button>
@@ -338,17 +451,55 @@ const systemAdminNav: NavItem[] = [
 ];
 export function AdminLayout({ system = false }: { system?: boolean }) {
   const [open, setOpen] = useState(false);
+  const [adminClubName, setAdminClubName] = useState("");
   const nav = system ? systemAdminNav : clubAdminNav;
+  const homePath = system ? "/system-admin" : "/club-admin";
+  const workspaceLabel = system
+    ? "University Admin workspace"
+    : adminClubName
+      ? `${adminClubName} workspace`
+      : "Club Admin workspace";
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadAdminClub() {
+      if (system) {
+        setAdminClubName("");
+        return;
+      }
+
+      try {
+        const memberships = await membershipApi.getMyMemberships();
+        const adminMembership = getPrimaryAdminMembership(memberships);
+
+        if (!ignore) {
+          setAdminClubName(adminMembership?.clubName ?? "");
+        }
+      } catch {
+        if (!ignore) {
+          setAdminClubName("");
+        }
+      }
+    }
+
+    loadAdminClub();
+
+    return () => {
+      ignore = true;
+    };
+  }, [system]);
+
   const sidebar = (
     <>
       <div className="flex items-center justify-between">
-        <Brand />
+        <Brand to={homePath} />
         <button className="btn-ghost lg:hidden" onClick={() => setOpen(false)}>
           <X />
         </button>
       </div>
       <div className="mt-3 text-sm text-white/80">
-        {system ? "SYSTEM_ADMIN workspace" : "CLUB_ADMIN workspace"}
+        {workspaceLabel}
       </div>
       <nav className="mt-8 grid gap-2">
         {nav.map(([to, label, Icon]) => (
@@ -367,23 +518,20 @@ export function AdminLayout({ system = false }: { system?: boolean }) {
         ))}
       </nav>
       <div className="mt-auto border-t border-white/20 pt-5">
-        <div className="flex items-center gap-3">
-          <div className="grid h-10 w-10 place-items-center rounded-full bg-white/15 font-bold text-white">
-            {system ? "SA" : "CA"}
-          </div>
-          <div>
-            <div className="font-bold text-white">
-              {system ? "System Admin" : "Club Admin"}
-            </div>
-            <div className="text-xs text-white/75">
-              {system ? "Toàn hệ thống" : "CLB Guitar"}
-            </div>
-          </div>
-          <LogoutButton
-            compact
-            className="ml-auto !text-white hover:!bg-white/15 hover:!text-white"
-          />
-        </div>
+        <UserProfileMenu
+          name={system ? "System Admin" : "Club Admin"}
+          initials={system ? "SA" : "CA"}
+          workspace={workspaceLabel}
+          profilePath={system ? "/system-admin/profile" : "/club-admin/profile"}
+          editProfilePath={
+            system ? "/system-admin/profile/edit" : "/club-admin/profile/edit"
+          }
+          securityPath={
+            system ? "/system-admin/account/security" : "/club-admin/account/security"
+          }
+          buttonClassName="w-full justify-between border-white/20 bg-white/10 text-white shadow-none hover:border-white/30 hover:bg-white/15 [&_.bg-primary]:!bg-white/20 [&_.text-slate-500]:!text-white"
+          menuClassName="bottom-14 left-0"
+        />
       </div>
     </>
   );
