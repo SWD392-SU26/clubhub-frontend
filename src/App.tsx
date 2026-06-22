@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import {
   RequireClubAdmin,
   RequireGuest,
+  RequireGuestLanding,
   RequireStudent,
   RequireUniversityAdmin,
 } from "./authGuards";
@@ -69,7 +70,7 @@ export default function App() {
   return (
     <AuthBootstrap>
       <Routes>
-        <Route element={<RequireGuest />}>
+        <Route element={<RequireGuestLanding />}>
           <Route element={<PublicLayout />}>
             <Route path="/" element={<HomePage />} />
           </Route>
@@ -100,6 +101,7 @@ export default function App() {
             <Route path="/my-clubs" element={<MyClubsPage />} />
             <Route path="/my-clubs/:id" element={<ClubDetailPage />} />
             <Route path="/my-events" element={<MyEventsPage />} />
+            <Route path="/my-events/:id" element={<EventDetailPage />} />
             <Route path="/join-requests" element={<JoinRequestsPage />} />
             <Route path="/club-proposals" element={<ClubProposalsPage />} />
             <Route
@@ -154,10 +156,7 @@ export default function App() {
               path="/club-admin/events"
               element={<EventsManagementPage />}
             />
-            <Route
-              path="/club-admin/events/new"
-              element={<CreateEventPage />}
-            />
+            <Route path="/club-admin/events/new" element={<CreateEventPage />} />
             <Route
               path="/club-admin/events/cancel"
               element={<CancelEventPage />}
@@ -179,10 +178,7 @@ export default function App() {
               path="/club-admin/statistics"
               element={<ClubStatisticsPage />}
             />
-            <Route
-              path="/club-admin/audit-log"
-              element={<ClubAuditLogPage />}
-            />
+            <Route path="/club-admin/audit-log" element={<ClubAuditLogPage />} />
             <Route path="/club-admin/settings" element={<ClubSettingsPage />} />
             <Route
               path="/club-admin/transfer"
@@ -220,10 +216,7 @@ export default function App() {
               path="/system-admin/clubs/:id"
               element={<SystemClubDetailPage />}
             />
-            <Route
-              path="/system-admin/users"
-              element={<UsersManagementPage />}
-            />
+            <Route path="/system-admin/users" element={<UsersManagementPage />} />
             <Route
               path="/system-admin/users/:id"
               element={<UserSecurityDetailPage />}

@@ -17,21 +17,27 @@ import {
   PlusCircle,
   FileText,
   Send,
-  XCircle,
 } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { authApi } from "../api/authApi";
 import { clearAuthSession, getProfile, setProfile } from "../api/authStorage";
 import { clubApi } from "../api/clubApi";
 import { eventApi } from "../api/eventApi";
 import { membershipApi } from "../api/membershipApi";
 import { pointApi } from "../api/pointApi";
+import { proposalApi } from "../api/proposalApi";
 import type { UserProfile } from "../types/auth";
 import type { ClubCategory, ClubSummary, MyMembership } from "../types/club";
 import type { EventDto, EventRegistration } from "../types/event";
 import type { MyPointSummary } from "../types/point";
-import { clubs, events, members, proposals, auditLogs } from "../data";
+import type {
+  ProposalDetail,
+  ProposalStatus,
+  ProposalSummary,
+  SubmitProposalRequest,
+} from "../types/proposal";
+import { clubs, events, members, auditLogs } from "../data";
 import {
   DataTable,
   EmptyState,
@@ -129,6 +135,108 @@ function getMembershipStatusLabel(membership?: MyMembership) {
   if (membership.status === "Left") return "Đã rời CLB";
 
   return membership.status;
+}
+
+const proposalStatusOptions: Array<{
+  label: string;
+  value?: ProposalStatus;
+}> = [
+  { label: "Tất cả" },
+  { label: "Đang chờ duyệt", value: "Pending" },
+  { label: "Cần chỉnh sửa", value: "NeedsRevision" },
+  { label: "Đã duyệt", value: "Approved" },
+  { label: "Từ chối", value: "Rejected" },
+];
+
+const proposalStatusLabels: Record<string, string> = {
+  Pending: "Đang chờ duyệt",
+  Approved: "Đã duyệt",
+  Rejected: "Từ chối",
+  NeedsRevision: "Cần chỉnh sửa",
+};
+
+type ProposalDraft = {
+  clubName: string;
+  category: ClubCategory;
+  description: string;
+  mission: string;
+  reason: string;
+  activityPlan: string;
+  founderInfo: string;
+  founderStudentCode: string;
+  contactEmail: string;
+  contactPhone: string;
+  advisor: string;
+  notes: string;
+};
+
+const PROPOSAL_DRAFT_KEY = "clubhub_proposal_draft";
+
+const emptyProposalDraft: ProposalDraft = {
+  clubName: "",
+  category: "Technology",
+  description: "",
+  mission: "",
+  reason: "",
+  activityPlan: "",
+  founderInfo: "",
+  founderStudentCode: "",
+  contactEmail: "",
+  contactPhone: "",
+  advisor: "",
+  notes: "",
+};
+
+function getProposalStatusLabel(status?: string | null) {
+  if (!status) return "Chưa rõ";
+  return proposalStatusLabels[status] ?? status;
+}
+
+function formatFullDate(value?: string | null) {
+  if (!value) return "--";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "--";
+
+  return date.toLocaleDateString("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
+function readProposalDraft(): ProposalDraft {
+  try {
+    const raw = sessionStorage.getItem(PROPOSAL_DRAFT_KEY);
+    return raw
+      ? { ...emptyProposalDraft, ...(JSON.parse(raw) as Partial<ProposalDraft>) }
+      : emptyProposalDraft;
+  } catch {
+    return emptyProposalDraft;
+  }
+}
+
+function writeProposalDraft(draft: ProposalDraft) {
+  sessionStorage.setItem(PROPOSAL_DRAFT_KEY, JSON.stringify(draft));
+}
+
+function toSubmitProposalRequest(
+  draft: ProposalDraft,
+): SubmitProposalRequest {
+  return {
+    clubName: draft.clubName.trim(),
+    category: draft.category,
+    description: draft.description.trim(),
+    mission: draft.mission.trim(),
+    reason: draft.reason.trim(),
+    activityPlan: draft.activityPlan.trim(),
+    founderInfo: draft.founderInfo.trim(),
+    founderStudentCode: draft.founderStudentCode.trim(),
+    contactEmail: draft.contactEmail.trim(),
+    contactPhone: draft.contactPhone.trim(),
+    advisor: draft.advisor.trim(),
+    notes: draft.notes.trim(),
+  };
 }
 
 function isClubManager(membership?: MyMembership) {
@@ -288,9 +396,9 @@ export function StudentDashboard() {
               <Sparkles className="h-4 w-4" />
               Đề xuất CLB
             </Link>
-            <Link to="/events" className="btn-primary">
+            <Link to="/my-events" className="btn-primary">
               <CalendarDays className="h-4 w-4" />
-              Đăng ký sự kiện
+              Sự kiện của tôi
             </Link>
           </>
         }
@@ -363,7 +471,7 @@ export function StudentDashboard() {
 
                   return (
                     <Link
-                      to={`/clubs/${club.id}`}
+                      to={`/my-clubs/${club.id}`}
                       className="rounded-xl border p-4 transition hover:bg-primary-soft"
                       key={club.id}
                     >
@@ -403,7 +511,7 @@ export function StudentDashboard() {
             {!loading &&
               clubEvents.map((event) => (
                 <Link
-                  to={`/events/${event.id}`}
+                  to={`/my-events/${event.id}`}
                   key={event.id}
                   className="mb-3 flex items-center gap-4 rounded-xl border p-4 hover:bg-primary-soft"
                 >
@@ -483,6 +591,7 @@ export function ProfilePage() {
   const [profile, setProfileState] = useState<UserProfile | null>(() =>
     getProfile(),
   );
+  const [profileClubs, setProfileClubs] = useState<ClubSummary[]>([]);
   const [loading, setLoading] = useState(!profile);
   const [error, setError] = useState("");
 
@@ -494,11 +603,15 @@ export function ProfilePage() {
       setError("");
 
       try {
-        const data = await authApi.getMe();
+        const [data, clubResult] = await Promise.all([
+          authApi.getMe(),
+          clubApi.getMyClubs(1, 4).catch(() => null),
+        ]);
         if (ignore) return;
 
         setProfileState(data);
         setProfile(data);
+        setProfileClubs(clubResult?.items ?? []);
       } catch (err) {
         if (ignore) return;
 
@@ -591,18 +704,29 @@ export function ProfilePage() {
         </div>
         <div className="space-y-6">
           <SectionCard title="Câu lạc bộ hiện tại">
-            <div className="grid gap-4 sm:grid-cols-2">
-              {clubs.slice(0, 2).map((c) => (
-                <Link
-                  to={`/clubs/${c.id}`}
-                  className="rounded-xl border p-4 hover:bg-primary-soft"
-                  key={c.id}
-                >
-                  <h3 className="font-bold">{c.name}</h3>
-                  <p className="text-sm text-muted">{c.category}</p>
-                </Link>
-              ))}
-            </div>
+            {loading && profileClubs.length === 0 ? (
+              <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-muted">
+                Đang tải câu lạc bộ của bạn...
+              </p>
+            ) : profileClubs.length > 0 ? (
+              <div className="grid gap-4 sm:grid-cols-2">
+                {profileClubs.map((club) => (
+                  <Link
+                    to={`/my-clubs/${club.id}`}
+                    className="rounded-xl border p-4 hover:bg-primary-soft"
+                    key={club.id}
+                  >
+                    <h3 className="font-bold">{club.name}</h3>
+                    <p className="text-sm text-muted">{club.category}</p>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <EmptyState
+                title="Bạn chưa tham gia CLB nào"
+                description="Các câu lạc bộ bạn đã tham gia sẽ xuất hiện tại đây."
+              />
+            )}
           </SectionCard>
           <SectionCard title="Hoạt động gần đây">
             <ActivityList />
@@ -1660,13 +1784,67 @@ export function JoinRequestsPage() {
 }
 
 export function ClubProposalsPage() {
+  const [items, setItems] = useState<ProposalSummary[]>([]);
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState<ProposalStatus | "All">("All");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadProposals() {
+      setLoading(true);
+      setError("");
+
+      try {
+        const data = await proposalApi.getMyProposals();
+        if (!ignore) {
+          setItems(data);
+        }
+      } catch (err) {
+        if (!ignore) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Không tải được danh sách đề xuất.",
+          );
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadProposals();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  const filteredItems = items.filter((item) => {
+    const matchesQuery =
+      !query.trim() ||
+      item.clubName.toLowerCase().includes(query.trim().toLowerCase()) ||
+      item.category.toLowerCase().includes(query.trim().toLowerCase());
+    const matchesStatus = status === "All" || item.status === status;
+
+    return matchesQuery && matchesStatus;
+  });
+
   return (
     <main className="page-shell">
       <PageTitle
         title="Đề xuất của tôi"
         description="Quản lý hồ sơ đề xuất thành lập CLB."
         actions={
-          <Link to="/club-proposals/new/step-1" className="btn-primary">
+          <Link
+            to="/club-proposals/new/step-1"
+            className="btn-primary"
+            onClick={() => sessionStorage.removeItem(PROPOSAL_DRAFT_KEY)}
+          >
             <PlusCircle className="h-4 w-4" />
             Tạo đề xuất mới
           </Link>
@@ -1674,88 +1852,259 @@ export function ClubProposalsPage() {
       />
       <FilterBar
         placeholder="Tìm kiếm tên câu lạc bộ..."
-        actions={[
-          "Tất cả",
-          "Bản nháp",
-          "Đã gửi",
-          "Cần chỉnh sửa",
-          "Đã duyệt",
-        ].map((x) => (
-          <button key={x} className="btn-secondary">
-            {x}
-          </button>
-        ))}
+        value={query}
+        onChange={setQuery}
+        actions={proposalStatusOptions.map((option) => {
+          const selected =
+            option.value === undefined ? status === "All" : status === option.value;
+
+          return (
+            <button
+              key={option.label}
+              type="button"
+              className={selected ? "btn-primary" : "btn-secondary"}
+              onClick={() => setStatus(option.value ?? "All")}
+            >
+              {option.label}
+            </button>
+          );
+        })}
       />
-      <section className="card overflow-hidden">
-        <DataTable
-          columns={["Tên câu lạc bộ", "Ngày gửi", "Trạng thái", "Hành động"]}
-          rows={proposals.map((p) => [
-            p.name,
-            p.date,
-            <StatusBadge status={p.status} />,
-            <Link to={`/club-proposals/${p.id}`} className="btn-ghost">
-              Xem chi tiết
-            </Link>,
-          ])}
+      {loading && (
+        <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-muted">
+          Đang tải đề xuất của bạn...
+        </p>
+      )}
+      {error && (
+        <p className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+          {error}
+        </p>
+      )}
+      {!loading && !error && filteredItems.length === 0 && (
+        <EmptyState
+          title="Chưa có đề xuất phù hợp"
+          description="Bạn có thể tạo đề xuất CLB mới hoặc điều chỉnh bộ lọc hiện tại."
         />
-      </section>
+      )}
+      {!loading && !error && filteredItems.length > 0 && (
+        <section className="card overflow-hidden">
+          <DataTable
+            columns={[
+              "Tên câu lạc bộ",
+              "Lĩnh vực",
+              "Ngày gửi",
+              "Trạng thái",
+              "Hành động",
+            ]}
+            rows={filteredItems.map((proposal) => [
+              proposal.clubName,
+              getClubCategoryLabel(proposal.category),
+              formatFullDate(proposal.submittedAt),
+              <StatusBadge status={getProposalStatusLabel(proposal.status)} />,
+              <Link
+                to={`/club-proposals/${proposal.id}`}
+                className="btn-ghost"
+              >
+                Xem chi tiết
+              </Link>,
+            ])}
+          />
+        </section>
+      )}
     </main>
   );
 }
+
 export function ClubProposalDetailPage() {
-  const p = proposals[1];
+  const { id } = useParams();
+  const [proposal, setProposal] = useState<ProposalDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadProposal() {
+      if (!id) {
+        setError("Không tìm thấy mã đề xuất.");
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      setError("");
+
+      try {
+        const data = await proposalApi.getProposalById(id);
+        if (!ignore) {
+          setProposal(data);
+        }
+      } catch (err) {
+        if (!ignore) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Không tải được chi tiết đề xuất.",
+          );
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadProposal();
+
+    return () => {
+      ignore = true;
+    };
+  }, [id]);
+
+  if (loading) {
+    return (
+      <main className="page-shell">
+        <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-muted">
+          Đang tải chi tiết đề xuất...
+        </p>
+      </main>
+    );
+  }
+
+  if (error || !proposal) {
+    return (
+      <main className="page-shell">
+        <EmptyState
+          title="Không tải được đề xuất"
+          description={error || "Đề xuất không tồn tại hoặc đã bị xóa."}
+        />
+      </main>
+    );
+  }
+
   return (
     <main className="page-shell">
       <PageTitle
-        eyebrow={p.status}
-        title={p.name}
+        eyebrow={getProposalStatusLabel(proposal.status)}
+        title={proposal.clubName}
         description="Chi tiết hồ sơ đề xuất và phản hồi từ ban quản lý."
         actions={
-          <>
-            <button className="btn-secondary">
-              <FileText className="h-4 w-4" />
-              Chỉnh sửa và gửi lại
-            </button>
-            <button className="btn-ghost text-red-600">
-              <XCircle className="h-4 w-4" />
-              Hủy đề xuất
-            </button>
-          </>
+          <Link to="/club-proposals" className="btn-secondary">
+            Quay lại danh sách
+          </Link>
         }
       />
       <div className="grid gap-6 lg:grid-cols-[1.4fr_.8fr]">
         <SectionCard title="Thông tin đề xuất">
-          <p className="leading-7 text-muted">
-            Mô tả chi tiết, sứ mệnh, kế hoạch hoạt động, người sáng lập và tài
-            liệu đính kèm.
-          </p>
-          <div className="mt-5 grid gap-4 sm:grid-cols-3">
-            <StatCard label="Điểm hồ sơ" value={`${p.score}`} icon={Star} />
+          <div className="grid gap-4 text-sm sm:grid-cols-2">
+            <div>
+              <div className="font-semibold text-muted">Lĩnh vực</div>
+              <div className="mt-1 font-bold">
+                {getClubCategoryLabel(proposal.category)}
+              </div>
+            </div>
+            <div>
+              <div className="font-semibold text-muted">Người đề xuất</div>
+              <div className="mt-1 font-bold">{proposal.submitterName}</div>
+            </div>
+            <div>
+              <div className="font-semibold text-muted">MSSV</div>
+              <div className="mt-1 font-bold">
+                {proposal.founderStudentCode}
+              </div>
+            </div>
+            <div>
+              <div className="font-semibold text-muted">Email liên hệ</div>
+              <div className="mt-1 font-bold">{proposal.contactEmail}</div>
+            </div>
+          </div>
+          <div className="mt-6 grid gap-4 sm:grid-cols-3">
             <StatCard
               label="Ngày gửi"
-              value={p.date}
+              value={formatFullDate(proposal.submittedAt)}
               icon={CalendarDays}
               tone="blue"
             />
             <StatCard
               label="Trạng thái"
-              value={p.status}
+              value={getProposalStatusLabel(proposal.status)}
               icon={ShieldCheck}
               tone="green"
             />
+            <StatCard
+              label="Ngày duyệt"
+              value={formatFullDate(proposal.reviewedAt)}
+              icon={Star}
+              tone="slate"
+            />
+          </div>
+          <div className="mt-6 space-y-5">
+            <div>
+              <h3 className="font-bold">Mô tả</h3>
+              <p className="mt-2 leading-7 text-muted">
+                {proposal.description || "Chưa cập nhật."}
+              </p>
+            </div>
+            <div>
+              <h3 className="font-bold">Sứ mệnh</h3>
+              <p className="mt-2 leading-7 text-muted">
+                {proposal.mission || "Chưa cập nhật."}
+              </p>
+            </div>
+            <div>
+              <h3 className="font-bold">Lý do thành lập</h3>
+              <p className="mt-2 leading-7 text-muted">
+                {proposal.reason || "Chưa cập nhật."}
+              </p>
+            </div>
+            <div>
+              <h3 className="font-bold">Kế hoạch hoạt động</h3>
+              <p className="mt-2 leading-7 text-muted">
+                {proposal.activityPlan || "Chưa cập nhật."}
+              </p>
+            </div>
           </div>
         </SectionCard>
         <SectionCard title="Phản hồi từ Ban quản lý">
-          <p className="text-muted">
-            Cần bổ sung dự trù kinh phí và làm rõ kế hoạch tuyển thành viên
-            trong học kỳ đầu.
+          <StatusBadge status={getProposalStatusLabel(proposal.status)} />
+          <p className="mt-4 text-muted">
+            {proposal.rejectionReason ||
+              "Chưa có phản hồi từ ban quản lý cho đề xuất này."}
           </p>
+          {proposal.notes && (
+            <div className="mt-5 rounded-xl bg-slate-50 p-4 text-sm text-muted">
+              <div className="font-semibold text-ink">Ghi chú của bạn</div>
+              <p className="mt-2">{proposal.notes}</p>
+            </div>
+          )}
         </SectionCard>
       </div>
     </main>
   );
 }
+
 export function ProposalStepPage({ step }: { step: number }) {
+  const navigate = useNavigate();
+  const profile = useCurrentProfile();
+  const [draft, setDraft] = useState<ProposalDraft>(() => {
+    const storedDraft = readProposalDraft();
+
+    return {
+      ...storedDraft,
+      founderInfo:
+        storedDraft.founderInfo ||
+        profile?.fullName ||
+        profile?.username ||
+        "",
+      founderStudentCode:
+        storedDraft.founderStudentCode || profile?.studentCode || "",
+      contactEmail: storedDraft.contactEmail || profile?.email || "",
+      contactPhone: storedDraft.contactPhone || profile?.phone || "",
+    };
+  });
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
   const titles = [
     "Thông tin cơ bản",
     "Tầm nhìn & Mục đích",
@@ -1763,19 +2112,80 @@ export function ProposalStepPage({ step }: { step: number }) {
     "Đính kèm tài liệu",
     "Kiểm tra & Gửi đề xuất",
   ];
+
+  const updateDraft = (field: keyof ProposalDraft, value: string) => {
+    setDraft((current) => {
+      const next = { ...current, [field]: value };
+      writeProposalDraft(next);
+      return next;
+    });
+    setError("");
+  };
+
+  const validateCurrentStep = () => {
+    if (step === 1 || step === 5) {
+      if (!draft.clubName.trim()) return "Vui lòng nhập tên câu lạc bộ.";
+      if (!draft.description.trim()) return "Vui lòng nhập mô tả ngắn gọn.";
+    }
+
+    if (step === 2 || step === 5) {
+      if (!draft.mission.trim()) return "Vui lòng nhập sứ mệnh của CLB.";
+      if (!draft.reason.trim()) return "Vui lòng nhập lý do thành lập.";
+    }
+
+    if (step === 3 || step === 5) {
+      if (!draft.founderInfo.trim()) return "Vui lòng nhập họ tên người sáng lập.";
+      if (!draft.founderStudentCode.trim()) return "Vui lòng nhập MSSV.";
+      if (!draft.contactEmail.trim()) return "Vui lòng nhập email liên hệ.";
+    }
+
+    return "";
+  };
+
+  const goNext = async () => {
+    const validationMessage = validateCurrentStep();
+
+    if (validationMessage) {
+      setError(validationMessage);
+      return;
+    }
+
+    writeProposalDraft(draft);
+
+    if (step < 5) {
+      navigate(`/club-proposals/new/step-${step + 1}`);
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    try {
+      await proposalApi.submitProposal(toSubmitProposalRequest(draft));
+      sessionStorage.removeItem(PROPOSAL_DRAFT_KEY);
+      navigate("/club-proposals", { replace: true });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gửi đề xuất thất bại.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <main className="page-shell max-w-5xl">
       <PageTitle
         eyebrow={`Bước ${step}/5`}
         title={titles[step - 1]}
-        description="Wizard đề xuất thành lập CLB theo thiết kế Stitch."
+        description="Hoàn thiện hồ sơ đề xuất thành lập CLB để gửi ban quản lý xét duyệt."
       />
       <section className="card p-6">
         <div className="mb-6 flex gap-2">
-          {[1, 2, 3, 4, 5].map((i) => (
+          {[1, 2, 3, 4, 5].map((item) => (
             <div
-              key={i}
-              className={`h-2 flex-1 rounded-full ${i <= step ? "bg-primary" : "bg-slate-200"}`}
+              key={item}
+              className={`h-2 flex-1 rounded-full ${
+                item <= step ? "bg-primary" : "bg-slate-200"
+              }`}
             />
           ))}
         </div>
@@ -1787,22 +2197,39 @@ export function ProposalStepPage({ step }: { step: number }) {
                 <input
                   className="input"
                   placeholder="VD: Câu lạc bộ Mỹ thuật Sáng tạo"
+                  value={draft.clubName}
+                  onChange={(event) =>
+                    updateDraft("clubName", event.target.value)
+                  }
                 />
               </label>
               <label>
-                <span className="label">Tên viết tắt *</span>
-                <input className="input" placeholder="VD: CAC" />
-              </label>
-              <label>
                 <span className="label">Lĩnh vực *</span>
-                <select className="input">
-                  <option>Công nghệ</option>
-                  <option>Nghệ thuật</option>
+                <select
+                  className="input"
+                  value={draft.category}
+                  onChange={(event) =>
+                    updateDraft("category", event.target.value)
+                  }
+                >
+                  {clubCategoryOptions
+                    .filter((option) => option.value)
+                    .map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                 </select>
               </label>
               <label className="sm:col-span-2">
                 <span className="label">Mô tả ngắn gọn *</span>
-                <textarea className="input h-28 py-3" />
+                <textarea
+                  className="input h-28 py-3"
+                  value={draft.description}
+                  onChange={(event) =>
+                    updateDraft("description", event.target.value)
+                  }
+                />
               </label>
             </>
           )}
@@ -1810,19 +2237,32 @@ export function ProposalStepPage({ step }: { step: number }) {
             <>
               <label className="sm:col-span-2">
                 <span className="label">Sứ mệnh *</span>
-                <textarea className="input h-28 py-3" />
+                <textarea
+                  className="input h-28 py-3"
+                  value={draft.mission}
+                  onChange={(event) =>
+                    updateDraft("mission", event.target.value)
+                  }
+                />
               </label>
               <label className="sm:col-span-2">
                 <span className="label">Lý do thành lập *</span>
-                <textarea className="input h-28 py-3" />
+                <textarea
+                  className="input h-28 py-3"
+                  value={draft.reason}
+                  onChange={(event) => updateDraft("reason", event.target.value)}
+                />
               </label>
-              <label>
-                <span className="label">Kế hoạch học kỳ 1</span>
-                <textarea className="input h-28 py-3" />
-              </label>
-              <label>
-                <span className="label">Kế hoạch học kỳ 2</span>
-                <textarea className="input h-28 py-3" />
+              <label className="sm:col-span-2">
+                <span className="label">Kế hoạch hoạt động</span>
+                <textarea
+                  className="input h-32 py-3"
+                  placeholder="VD: Tuyển thành viên, workshop định kỳ, sự kiện học kỳ..."
+                  value={draft.activityPlan}
+                  onChange={(event) =>
+                    updateDraft("activityPlan", event.target.value)
+                  }
+                />
               </label>
             </>
           )}
@@ -1830,44 +2270,119 @@ export function ProposalStepPage({ step }: { step: number }) {
             <>
               <label>
                 <span className="label">Họ và tên *</span>
-                <input className="input" />
+                <input
+                  className="input"
+                  value={draft.founderInfo}
+                  onChange={(event) =>
+                    updateDraft("founderInfo", event.target.value)
+                  }
+                />
               </label>
               <label>
                 <span className="label">MSSV *</span>
-                <input className="input" />
+                <input
+                  className="input"
+                  value={draft.founderStudentCode}
+                  onChange={(event) =>
+                    updateDraft("founderStudentCode", event.target.value)
+                  }
+                />
               </label>
               <label>
                 <span className="label">Email sinh viên *</span>
-                <input className="input" />
+                <input
+                  className="input"
+                  type="email"
+                  value={draft.contactEmail}
+                  onChange={(event) =>
+                    updateDraft("contactEmail", event.target.value)
+                  }
+                />
               </label>
               <label>
-                <span className="label">Số điện thoại *</span>
-                <input className="input" />
+                <span className="label">Số điện thoại</span>
+                <input
+                  className="input"
+                  value={draft.contactPhone}
+                  onChange={(event) =>
+                    updateDraft("contactPhone", event.target.value)
+                  }
+                />
               </label>
             </>
           )}
           {step === 4 && (
             <>
-              <div className="sm:col-span-2 rounded-2xl border border-dashed p-8 text-center">
+              <label className="sm:col-span-2">
+                <span className="label">Cố vấn dự kiến</span>
+                <input
+                  className="input"
+                  placeholder="Tên giảng viên/cố vấn nếu đã có"
+                  value={draft.advisor}
+                  onChange={(event) =>
+                    updateDraft("advisor", event.target.value)
+                  }
+                />
+              </label>
+              <label className="sm:col-span-2">
+                <span className="label">Ghi chú bổ sung</span>
+                <textarea
+                  className="input h-28 py-3"
+                  value={draft.notes}
+                  onChange={(event) => updateDraft("notes", event.target.value)}
+                />
+              </label>
+              <div className="rounded-2xl border border-dashed p-8 text-center sm:col-span-2">
                 <FileText className="mx-auto text-primary" />
                 <h3 className="mt-3 font-bold">
-                  Tải logo và bản kế hoạch chi tiết
+                  Tài liệu đính kèm sẽ bổ sung sau
                 </h3>
-                <p className="text-sm text-muted">Hỗ trợ PNG, JPG, PDF, DOCX</p>
+                <p className="text-sm text-muted">
+                  Backend hiện nhận đường dẫn tài liệu, chưa có API upload file
+                  trực tiếp trong luồng này.
+                </p>
               </div>
             </>
           )}
           {step === 5 && (
-            <>
-              <SectionCard title="Tóm tắt hồ sơ">
-                <p className="text-muted">
-                  Kiểm tra thông tin chung, ban điều hành, kế hoạch hoạt động và
-                  tài liệu đính kèm trước khi gửi.
-                </p>
-              </SectionCard>
-            </>
-          )}{" "}
+            <SectionCard title="Tóm tắt hồ sơ">
+              <div className="grid gap-4 text-sm sm:grid-cols-2">
+                <div>
+                  <div className="font-semibold text-muted">Tên CLB</div>
+                  <div className="mt-1 font-bold">
+                    {draft.clubName || "Chưa nhập"}
+                  </div>
+                </div>
+                <div>
+                  <div className="font-semibold text-muted">Lĩnh vực</div>
+                  <div className="mt-1 font-bold">
+                    {getClubCategoryLabel(draft.category)}
+                  </div>
+                </div>
+                <div>
+                  <div className="font-semibold text-muted">Người sáng lập</div>
+                  <div className="mt-1 font-bold">
+                    {draft.founderInfo || "Chưa nhập"}
+                  </div>
+                </div>
+                <div>
+                  <div className="font-semibold text-muted">Email liên hệ</div>
+                  <div className="mt-1 font-bold">
+                    {draft.contactEmail || "Chưa nhập"}
+                  </div>
+                </div>
+              </div>
+              <p className="mt-5 leading-7 text-muted">
+                {draft.description || "Chưa có mô tả."}
+              </p>
+            </SectionCard>
+          )}
         </div>
+        {error && (
+          <p className="mt-5 rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+            {error}
+          </p>
+        )}
         <div className="mt-8 flex justify-between">
           <Link
             to={
@@ -1879,17 +2394,15 @@ export function ProposalStepPage({ step }: { step: number }) {
           >
             Quay lại
           </Link>
-          <Link
-            to={
-              step < 5
-                ? `/club-proposals/new/step-${step + 1}`
-                : "/club-proposals"
-            }
+          <button
+            type="button"
+            onClick={goNext}
+            disabled={loading}
             className="btn-primary"
           >
-            {step < 5 ? "Tiếp theo" : "Gửi đề xuất"}
+            {loading ? "Đang gửi..." : step < 5 ? "Tiếp theo" : "Gửi đề xuất"}
             <Send className="h-4 w-4" />
-          </Link>
+          </button>
         </div>
       </section>
     </main>
