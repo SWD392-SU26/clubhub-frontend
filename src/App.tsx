@@ -69,8 +69,13 @@ export default function App() {
   return (
     <AuthBootstrap>
       <Routes>
+        <Route element={<RequireGuest />}>
+          <Route element={<PublicLayout />}>
+            <Route path="/" element={<HomePage />} />
+          </Route>
+        </Route>
+
         <Route element={<PublicLayout />}>
-          <Route path="/" element={<HomePage />} />
           <Route path="/style-guide" element={<StyleGuidePage />} />
           <Route path="/clubs" element={<ClubsExplorePage />} />
           <Route path="/clubs/:id" element={<ClubDetailPage />} />
@@ -149,7 +154,10 @@ export default function App() {
               path="/club-admin/events"
               element={<EventsManagementPage />}
             />
-            <Route path="/club-admin/events/new" element={<CreateEventPage />} />
+            <Route
+              path="/club-admin/events/new"
+              element={<CreateEventPage />}
+            />
             <Route
               path="/club-admin/events/cancel"
               element={<CancelEventPage />}
@@ -171,7 +179,10 @@ export default function App() {
               path="/club-admin/statistics"
               element={<ClubStatisticsPage />}
             />
-            <Route path="/club-admin/audit-log" element={<ClubAuditLogPage />} />
+            <Route
+              path="/club-admin/audit-log"
+              element={<ClubAuditLogPage />}
+            />
             <Route path="/club-admin/settings" element={<ClubSettingsPage />} />
             <Route
               path="/club-admin/transfer"
@@ -209,7 +220,10 @@ export default function App() {
               path="/system-admin/clubs/:id"
               element={<SystemClubDetailPage />}
             />
-            <Route path="/system-admin/users" element={<UsersManagementPage />} />
+            <Route
+              path="/system-admin/users"
+              element={<UsersManagementPage />}
+            />
             <Route
               path="/system-admin/users/:id"
               element={<UserSecurityDetailPage />}

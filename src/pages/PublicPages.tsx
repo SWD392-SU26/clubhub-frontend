@@ -14,6 +14,7 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { getAccessToken } from "../api/authStorage";
 import { clubApi } from "../api/clubApi";
 import { membershipApi } from "../api/membershipApi";
+import { eventApi } from "../api/eventApi";
 import type {
   ClubCategory,
   ClubDetail,
@@ -31,6 +32,7 @@ import {
   StatCard,
   StatusBadge,
 } from "../components";
+import type { EventDto } from "../types/event";
 
 const fallbackClubImage =
   "https://images.unsplash.com/photo-1542744173-8e7e53415bb0?auto=format&fit=crop&w=1200&q=80";
@@ -442,7 +444,9 @@ export function ClubsExplorePage() {
       } catch (err) {
         if (!ignore) {
           setError(
-            err instanceof Error ? err.message : "Không tải được danh sách CLB.",
+            err instanceof Error
+              ? err.message
+              : "Không tải được danh sách CLB.",
           );
         }
       } finally {
@@ -477,7 +481,9 @@ export function ClubsExplorePage() {
             type="button"
             onClick={() => setSelectedCategory(option.value)}
             className={
-              selectedCategory === option.value ? "btn-primary" : "btn-secondary"
+              selectedCategory === option.value
+                ? "btn-primary"
+                : "btn-secondary"
             }
           >
             {option.label}
@@ -522,6 +528,9 @@ export function ClubDetailPage() {
   const [joining, setJoining] = useState(false);
   const [joinMessage, setJoinMessage] = useState("");
   const [joinSuccess, setJoinSuccess] = useState(false);
+  const [upcomingEvents, setUpcomingEvents] = useState<EventDto[]>([]);
+  const [eventsLoading, setEventsLoading] = useState(false);
+  const [eventsError, setEventsError] = useState("");
 
   useEffect(() => {
     let ignore = false;
@@ -584,7 +593,9 @@ export function ClubDetailPage() {
             );
             setError("");
           } else {
-            setError(err instanceof Error ? err.message : "Không tải được CLB.");
+            setError(
+              err instanceof Error ? err.message : "Không tải được CLB.",
+            );
           }
         }
       } finally {
@@ -601,6 +612,48 @@ export function ClubDetailPage() {
     };
   }, [id]);
 
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadClubEvents() {
+      if (!club?.id || !isGuid(club.id)) {
+        setUpcomingEvents([]);
+        setEventsError("");
+        return;
+      }
+
+      setEventsLoading(true);
+      setEventsError("");
+
+      try {
+        const result = await eventApi.getClubEvents(club.id, 1, 3);
+
+        if (!ignore) {
+          setUpcomingEvents(result.items);
+        }
+      } catch (err) {
+        if (!ignore) {
+          setUpcomingEvents([]);
+          setEventsError(
+            err instanceof Error
+              ? err.message
+              : "Không tải được sự kiện của CLB.",
+          );
+        }
+      } finally {
+        if (!ignore) {
+          setEventsLoading(false);
+        }
+      }
+    }
+
+    loadClubEvents();
+
+    return () => {
+      ignore = true;
+    };
+  }, [club?.id]);
+
   const joinClub = async () => {
     if (!club) return;
 
@@ -616,7 +669,9 @@ export function ClubDetailPage() {
 
     if (currentMembership?.status === "Pending") {
       setJoinSuccess(true);
-      setJoinMessage("Bạn đã gửi yêu cầu tham gia CLB này. Vui lòng chờ duyệt.");
+      setJoinMessage(
+        "Bạn đã gửi yêu cầu tham gia CLB này. Vui lòng chờ duyệt.",
+      );
       return;
     }
 
@@ -657,12 +712,12 @@ export function ClubDetailPage() {
     club && !isGuid(club.id)
       ? "Đang xem thông tin"
       : currentMembership?.status === "Pending"
-      ? "Đã gửi yêu cầu"
-      : currentMembership?.status === "Approved"
-        ? "Đã là thành viên"
-        : joining
-          ? "Đang gửi..."
-          : "Gửi yêu cầu tham gia";
+        ? "Đã gửi yêu cầu"
+        : currentMembership?.status === "Approved"
+          ? "Đã là thành viên"
+          : joining
+            ? "Đang gửi..."
+            : "Gửi yêu cầu tham gia";
   const joinButtonDisabled =
     Boolean(club && !isGuid(club.id)) ||
     joining ||
@@ -754,18 +809,40 @@ export function ClubDetailPage() {
         </div>
         <aside className="space-y-6">
           <SectionCard title="Sự kiện sắp tới">
-            {events.slice(0, 2).map((e) => (
-              <Link
-                key={e.id}
-                to={`/events/${e.id}`}
-                className="mb-3 block rounded-xl border p-4 hover:bg-primary-soft"
-              >
-                <div className="font-bold">{e.title}</div>
-                <div className="text-sm text-muted">
-                  {e.date} · {e.location}
-                </div>
-              </Link>
-            ))}
+            {eventsLoading && (
+              <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-muted">
+                Đang tải sự kiện của CLB...
+              </p>
+            )}
+            {!eventsLoading && eventsError && (
+              <p className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+                {eventsError}
+              </p>
+            )}
+            {!eventsLoading && !eventsError && upcomingEvents.length === 0 && (
+              <EmptyState
+                title="Chưa có sự kiện sắp tới"
+                description="Các sự kiện mới của CLB sẽ xuất hiện tại đây."
+              />
+            )}
+            {!eventsLoading &&
+              !eventsError &&
+              upcomingEvents.map((event) => (
+                <Link
+                  key={event.id}
+                  to={`/events/${event.id}`}
+                  className="mb-3 block rounded-xl border p-4 hover:bg-primary-soft"
+                >
+                  <div className="font-bold">{event.name}</div>
+                  <div className="mt-1 text-sm text-muted">
+                    {formatEventDate(event.startTime)} ·{" "}
+                    {formatEventTimeRange(event.startTime, event.endTime)}
+                  </div>
+                  <div className="mt-1 text-sm text-muted">
+                    {event.location || "Chưa cập nhật địa điểm"}
+                  </div>
+                </Link>
+              ))}
           </SectionCard>
           <SectionCard title="Thông tin liên hệ">
             <p className="text-muted">clubhub@university.edu.vn</p>
@@ -836,60 +913,230 @@ export function EventsExplorePage() {
     </main>
   );
 }
+function formatEventDate(value?: string | null) {
+  if (!value) return "--";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "--";
+
+  return date.toLocaleDateString("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
+function formatEventTimeRange(start?: string | null, end?: string | null) {
+  const startDate = start ? new Date(start) : null;
+  const endDate = end ? new Date(end) : null;
+
+  if (!startDate || Number.isNaN(startDate.getTime())) {
+    return "Chưa cập nhật";
+  }
+
+  const startTime = startDate.toLocaleTimeString("vi-VN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  if (!endDate || Number.isNaN(endDate.getTime())) return startTime;
+
+  const endTime = endDate.toLocaleTimeString("vi-VN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  return `${startTime} - ${endTime}`;
+}
+
 export function EventDetailPage() {
-  const e = events[0];
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const [event, setEvent] = useState<EventDto | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [registering, setRegistering] = useState(false);
+  const [message, setMessage] = useState("");
+  const [success, setSuccess] = useState(false);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadEvent() {
+      if (!id) {
+        setError("Không tìm thấy mã sự kiện.");
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      setError("");
+
+      try {
+        const data = await eventApi.getEventById(id);
+
+        if (!ignore) {
+          setEvent(data);
+        }
+      } catch (err) {
+        if (!ignore) {
+          setError(
+            err instanceof Error ? err.message : "Không tải được sự kiện.",
+          );
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadEvent();
+
+    return () => {
+      ignore = true;
+    };
+  }, [id]);
+
+  const registerEvent = async () => {
+    if (!event) return;
+
+    if (!getAccessToken()) {
+      navigate("/login", {
+        state: {
+          from: `/events/${event.id}`,
+          message: "Vui lòng đăng nhập để đăng ký sự kiện.",
+        },
+      });
+      return;
+    }
+
+    setRegistering(true);
+    setMessage("");
+    setSuccess(false);
+
+    try {
+      await eventApi.register(event.id);
+
+      setEvent((current) =>
+        current
+          ? {
+              ...current,
+              registeredCount: current.registeredCount + 1,
+            }
+          : current,
+      );
+
+      setSuccess(true);
+      setMessage("Đăng ký sự kiện thành công.");
+    } catch (err) {
+      setSuccess(false);
+      setMessage(
+        err instanceof Error ? err.message : "Đăng ký sự kiện thất bại.",
+      );
+    } finally {
+      setRegistering(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <main className="page-shell">
+        <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-muted">
+          Đang tải thông tin sự kiện...
+        </p>
+      </main>
+    );
+  }
+
+  if (error || !event) {
+    return (
+      <main className="page-shell">
+        <EmptyState
+          title="Không tải được sự kiện"
+          description={error || "Sự kiện không tồn tại hoặc đã bị ẩn."}
+        />
+      </main>
+    );
+  }
+
   return (
     <main className="page-shell">
       <PageTitle
         eyebrow="Chi tiết sự kiện"
-        title={e.title}
-        description={`${e.club} · ${e.location} · ${e.date} ${e.time}`}
-        actions={<button className="btn-primary">Đăng ký tham gia</button>}
+        title={event.name}
+        description={`${event.clubName} · ${
+          event.location || "Chưa cập nhật địa điểm"
+        } · ${formatEventDate(event.startTime)} ${formatEventTimeRange(
+          event.startTime,
+          event.endTime,
+        )}`}
+        actions={
+          <button
+            onClick={registerEvent}
+            disabled={registering || event.status === "Cancelled"}
+            className="btn-primary"
+          >
+            {registering ? "Đang đăng ký..." : "Đăng ký tham gia"}
+          </button>
+        }
       />
+
+      {message && (
+        <p
+          className={`mb-5 rounded-xl px-4 py-3 text-sm font-medium ${
+            success
+              ? "bg-emerald-50 text-emerald-700"
+              : "bg-red-50 text-red-600"
+          }`}
+        >
+          {message}
+        </p>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-[1.4fr_.8fr]">
         <SectionCard title="Về sự kiện">
           <p className="leading-7 text-muted">
-            Sự kiện tập trung vào AI, portfolio và kỹ năng công nghệ cho sinh
-            viên. Người tham gia cần đăng ký trước khi check-in.
+            {event.description || "Thông tin sự kiện sẽ được cập nhật sau."}
           </p>
+
           <div className="mt-6 grid gap-4 sm:grid-cols-3">
             <StatCard
               label="Người đăng ký"
-              value={`${e.registered}`}
+              value={`${event.registeredCount}`}
               icon={Users}
             />
             <StatCard
-              label="Số điểm"
-              value={`${e.points}`}
-              icon={Star}
-              tone="green"
-            />
-            <StatCard
               label="Sức chứa"
-              value={`${e.capacity}`}
+              value={event.capacity ? `${event.capacity}` : "--"}
               icon={CalendarDays}
               tone="blue"
             />
+            <StatCard
+              label="Trạng thái"
+              value={event.status}
+              icon={Star}
+              tone="green"
+            />
           </div>
         </SectionCard>
-        <SectionCard title="Lịch trình">
-          <div className="space-y-4">
-            {[
-              "Check-in & Teabreak",
-              "Keynote: Kỷ nguyên AI 2026",
-              "Workshop: Xây dựng Portfolio",
-              "Networking & Feedback",
-            ].map((x, i) => (
-              <div key={x} className="flex gap-3">
-                <div className="grid h-10 w-10 place-items-center rounded-full bg-primary-soft font-bold text-primary">
-                  {i + 1}
-                </div>
-                <div>
-                  <div className="font-bold">{x}</div>
-                  <div className="text-sm text-muted">{8 + i * 2}:00</div>
-                </div>
-              </div>
-            ))}
+
+        <SectionCard title="Thời gian & địa điểm">
+          <div className="space-y-4 text-sm text-muted">
+            <div>
+              <div className="font-bold text-ink">Ngày diễn ra</div>
+              <div>{formatEventDate(event.startTime)}</div>
+            </div>
+
+            <div>
+              <div className="font-bold text-ink">Thời gian</div>
+              <div>{formatEventTimeRange(event.startTime, event.endTime)}</div>
+            </div>
+
+            <div>
+              <div className="font-bold text-ink">Địa điểm</div>
+              <div>{event.location || "Chưa cập nhật"}</div>
+            </div>
           </div>
         </SectionCard>
       </div>

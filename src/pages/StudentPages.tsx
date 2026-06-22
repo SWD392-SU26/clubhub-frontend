@@ -266,9 +266,7 @@ export function StudentDashboard() {
     pendingMembershipCount > 0
       ? `${pendingMembershipCount} yêu cầu tham gia CLB đang chờ duyệt.`
       : "",
-    myEvents.length > 0
-      ? `Bạn đã đăng ký ${myEvents.length} sự kiện.`
-      : "",
+    myEvents.length > 0 ? `Bạn đã đăng ký ${myEvents.length} sự kiện.` : "",
     approvedMembershipCount > 0
       ? `Bạn đang là thành viên của ${approvedMembershipCount} CLB.`
       : "",
@@ -939,7 +937,9 @@ export function AccountSecurityPage() {
       setConfirmPassword("");
       setSuccess("Cập nhật mật khẩu thành công.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Cập nhật mật khẩu thất bại.");
+      setError(
+        err instanceof Error ? err.message : "Cập nhật mật khẩu thất bại.",
+      );
     } finally {
       setLoading(false);
     }
@@ -1024,7 +1024,11 @@ export function AccountSecurityPage() {
               <Link to="/dashboard" className="btn-secondary justify-center">
                 Về trang chính
               </Link>
-              <button type="button" onClick={loginAgain} className="btn-primary">
+              <button
+                type="button"
+                onClick={loginAgain}
+                className="btn-primary"
+              >
                 Đăng nhập lại
               </button>
             </div>
@@ -1256,7 +1260,9 @@ export function MyClubsPage() {
           <button
             type="button"
             className={
-              selectedCategory === option.value ? "btn-primary" : "btn-secondary"
+              selectedCategory === option.value
+                ? "btn-primary"
+                : "btn-secondary"
             }
             key={option.label}
             onClick={() => setSelectedCategory(option.value)}
@@ -1367,9 +1373,7 @@ export function MyClubsPage() {
                         disabled={joiningClubId === club.id}
                         className="btn-primary justify-center"
                       >
-                        {joiningClubId === club.id
-                          ? "Đang gửi..."
-                          : "Tham gia"}
+                        {joiningClubId === club.id ? "Đang gửi..." : "Tham gia"}
                       </button>
                     ) : (
                       <button
@@ -1393,53 +1397,209 @@ export function MyClubsPage() {
   );
 }
 export function MyEventsPage() {
+  const [registrations, setRegistrations] = useState<EventRegistration[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [cancellingId, setCancellingId] = useState("");
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadMyEvents() {
+      setLoading(true);
+      setError("");
+
+      try {
+        const data = await eventApi.getMyEvents();
+
+        if (!ignore) {
+          setRegistrations(data);
+        }
+      } catch (err) {
+        if (!ignore) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Không tải được sự kiện của bạn.",
+          );
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadMyEvents();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  const cancelRegistration = async (eventId: string) => {
+    setCancellingId(eventId);
+    setError("");
+
+    try {
+      await eventApi.cancelRegistration(eventId);
+
+      setRegistrations((current) =>
+        current.filter((item) => item.eventId !== eventId),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Hủy đăng ký thất bại.");
+    } finally {
+      setCancellingId("");
+    }
+  };
+
   return (
     <main className="page-shell">
       <PageTitle
         title="Sự kiện của tôi"
-        description="Sự kiện sắp diễn ra, đã tham gia và đã hủy."
+        description="Theo dõi các sự kiện bạn đã đăng ký và trạng thái check-in."
       />
-      <FilterBar
-        actions={["Sắp diễn ra", "Đã tham gia", "Đã hủy"].map((x) => (
-          <button key={x} className="btn-secondary">
-            {x}
-          </button>
-        ))}
-      />
-      <div className="grid gap-4">
-        {events.map((e) => (
-          <section
-            className="card flex flex-col gap-4 p-5 sm:flex-row sm:items-center"
-            key={e.id}
-          >
-            <div className="grid h-16 w-16 place-items-center rounded-xl bg-primary-soft text-center font-bold text-primary">
-              {e.date.split("/")[0]}
-            </div>
-            <div className="flex-1">
-              <h3 className="font-bold">{e.title}</h3>
-              <p className="text-sm text-muted">
-                {e.location} · {e.time}
-              </p>
-            </div>
-            <StatusBadge status={e.status} />
-            <Link to={`/events/${e.id}`} className="btn-secondary">
-              Chi tiết
-            </Link>
-            <button className="btn-ghost text-red-600">Hủy đăng ký</button>
-          </section>
-        ))}
-      </div>
+
+      {error && (
+        <p className="mb-5 rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+          {error}
+        </p>
+      )}
+
+      {loading && (
+        <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-muted">
+          Đang tải sự kiện của bạn...
+        </p>
+      )}
+
+      {!loading && registrations.length === 0 && (
+        <EmptyState
+          title="Bạn chưa đăng ký sự kiện nào"
+          description="Hãy khám phá các sự kiện từ câu lạc bộ và đăng ký tham gia."
+        />
+      )}
+
+      {!loading && registrations.length > 0 && (
+        <div className="grid gap-4">
+          {registrations.map((registration) => (
+            <section
+              className="card flex flex-col gap-4 p-5 sm:flex-row sm:items-center"
+              key={registration.id}
+            >
+              <div className="grid h-16 w-16 place-items-center rounded-xl bg-primary-soft text-center font-bold text-primary">
+                {formatShortDate(registration.registeredAt)}
+              </div>
+
+              <div className="flex-1">
+                <h3 className="font-bold">{registration.eventName}</h3>
+                <p className="text-sm text-muted">
+                  Đăng ký lúc {formatTimeRange(registration.registeredAt, null)}
+                </p>
+              </div>
+
+              <StatusBadge
+                status={registration.isCheckedIn ? "Đã check-in" : "Đã đăng ký"}
+              />
+
+              <Link
+                to={`/events/${registration.eventId}`}
+                className="btn-secondary"
+              >
+                Chi tiết
+              </Link>
+
+              {!registration.isCheckedIn && (
+                <button
+                  onClick={() => cancelRegistration(registration.eventId)}
+                  disabled={cancellingId === registration.eventId}
+                  className="btn-ghost text-red-600"
+                >
+                  {cancellingId === registration.eventId
+                    ? "Đang hủy..."
+                    : "Hủy đăng ký"}
+                </button>
+              )}
+            </section>
+          ))}
+        </div>
+      )}
     </main>
   );
 }
+
 export function JoinRequestsPage() {
+  const [memberships, setMemberships] = useState<MyMembership[]>([]);
+  const [searchText, setSearchText] = useState("");
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "Pending" | "Approved" | "Rejected" | "Left"
+  >("all");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadMemberships() {
+      setLoading(true);
+      setError("");
+
+      try {
+        const data = await membershipApi.getMyMemberships();
+
+        if (!ignore) {
+          setMemberships(data);
+        }
+      } catch (err) {
+        if (!ignore) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Không tải được yêu cầu tham gia CLB.",
+          );
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadMemberships();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  const filteredMemberships = memberships.filter((membership) => {
+    const matchesSearch = membership.clubName
+      .toLowerCase()
+      .includes(searchText.trim().toLowerCase());
+    const matchesStatus =
+      statusFilter === "all" || membership.status === statusFilter;
+
+    return matchesSearch && matchesStatus;
+  });
+
+  const statusOptions: Array<{
+    label: string;
+    value: "all" | "Pending" | "Approved" | "Rejected" | "Left";
+  }> = [
+    { label: "Tất cả", value: "all" },
+    { label: "Đang chờ", value: "Pending" },
+    { label: "Đã duyệt", value: "Approved" },
+    { label: "Đã từ chối", value: "Rejected" },
+    { label: "Đã rời", value: "Left" },
+  ];
+
   return (
     <main className="page-shell">
       <PageTitle
         title="Yêu cầu hội viên của tôi"
         description="Theo dõi trạng thái đơn tham gia CLB."
         actions={
-          <Link to="/clubs" className="btn-primary">
+          <Link to="/my-clubs" className="btn-primary">
             <PlusCircle className="h-4 w-4" />
             Tìm CLB mới
           </Link>
@@ -1447,32 +1607,58 @@ export function JoinRequestsPage() {
       />
       <FilterBar
         placeholder="Tìm câu lạc bộ..."
-        actions={["Tất cả", "Đang chờ", "Đã duyệt", "Đã từ chối"].map((x) => (
-          <button key={x} className="btn-secondary">
-            {x}
+        value={searchText}
+        onChange={setSearchText}
+        actions={statusOptions.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => setStatusFilter(option.value)}
+            className={
+              statusFilter === option.value ? "btn-primary" : "btn-secondary"
+            }
+          >
+            {option.label}
           </button>
         ))}
       />
-      <section className="card overflow-hidden">
-        <DataTable
-          columns={["Tên câu lạc bộ", "Ngày gửi", "Trạng thái", "Hành động"]}
-          rows={clubs
-            .slice(0, 3)
-            .map((c, i) => [
-              c.name,
-              "12/03/2026",
-              <StatusBadge
-                status={i === 0 ? "PENDING" : i === 1 ? "APPROVED" : "REJECTED"}
-              />,
-              <button className="btn-ghost">
-                {i === 0 ? "Hủy yêu cầu" : "Xem thông tin"}
-              </button>,
-            ])}
+
+      {error && (
+        <p className="mb-5 rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+          {error}
+        </p>
+      )}
+
+      {loading && (
+        <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-muted">
+          Đang tải yêu cầu tham gia CLB...
+        </p>
+      )}
+
+      {!loading && filteredMemberships.length === 0 && (
+        <EmptyState
+          title="Chưa có yêu cầu phù hợp"
+          description="Các yêu cầu tham gia CLB của bạn sẽ xuất hiện tại đây."
         />
-      </section>
+      )}
+
+      {!loading && filteredMemberships.length > 0 && (
+        <section className="card overflow-hidden">
+          <DataTable
+            columns={["Tên câu lạc bộ", "Ngày gửi", "Vai trò", "Trạng thái"]}
+            rows={filteredMemberships.map((membership) => [
+              membership.clubName,
+              formatShortDate(membership.requestedAt),
+              membership.roleInClub,
+              <StatusBadge status={getMembershipStatusLabel(membership)} />,
+            ])}
+          />
+        </section>
+      )}
     </main>
   );
 }
+
 export function ClubProposalsPage() {
   return (
     <main className="page-shell">
