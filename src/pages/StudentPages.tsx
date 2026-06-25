@@ -1,5 +1,4 @@
 import {
-  Activity,
   Bell,
   CalendarDays,
   Camera,
@@ -17,21 +16,27 @@ import {
   PlusCircle,
   FileText,
   Send,
-  XCircle,
 } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { authApi } from "../api/authApi";
 import { clearAuthSession, getProfile, setProfile } from "../api/authStorage";
 import { clubApi } from "../api/clubApi";
 import { eventApi } from "../api/eventApi";
 import { membershipApi } from "../api/membershipApi";
 import { pointApi } from "../api/pointApi";
+import { proposalApi } from "../api/proposalApi";
 import type { UserProfile } from "../types/auth";
 import type { ClubCategory, ClubSummary, MyMembership } from "../types/club";
 import type { EventDto, EventRegistration } from "../types/event";
 import type { MyPointSummary } from "../types/point";
-import { clubs, events, members, proposals, auditLogs } from "../data";
+import type {
+  ProposalDetail,
+  ProposalStatus,
+  ProposalSummary,
+  SubmitProposalRequest,
+} from "../types/proposal";
+import { clubs, events, members } from "../data";
 import {
   DataTable,
   EmptyState,
@@ -131,6 +136,109 @@ function getMembershipStatusLabel(membership?: MyMembership) {
   return membership.status;
 }
 
+const proposalStatusOptions: Array<{
+  label: string;
+  value?: ProposalStatus;
+}> = [
+  { label: "Tất cả" },
+  { label: "Đang chờ duyệt", value: "Pending" },
+  { label: "Cần chỉnh sửa", value: "NeedsRevision" },
+  { label: "Đã duyệt", value: "Approved" },
+  { label: "Từ chối", value: "Rejected" },
+];
+
+const proposalStatusLabels: Record<string, string> = {
+  Pending: "Đang chờ duyệt",
+  Approved: "Đã duyệt",
+  Rejected: "Từ chối",
+  NeedsRevision: "Cần chỉnh sửa",
+};
+
+type ProposalDraft = {
+  clubName: string;
+  category: ClubCategory;
+  description: string;
+  mission: string;
+  reason: string;
+  activityPlan: string;
+  founderInfo: string;
+  founderStudentCode: string;
+  contactEmail: string;
+  contactPhone: string;
+  advisor: string;
+  notes: string;
+};
+
+const PROPOSAL_DRAFT_KEY = "clubhub_proposal_draft";
+
+const emptyProposalDraft: ProposalDraft = {
+  clubName: "",
+  category: "Technology",
+  description: "",
+  mission: "",
+  reason: "",
+  activityPlan: "",
+  founderInfo: "",
+  founderStudentCode: "",
+  contactEmail: "",
+  contactPhone: "",
+  advisor: "",
+  notes: "",
+};
+
+function getProposalStatusLabel(status?: string | null) {
+  if (!status) return "Chưa rõ";
+  return proposalStatusLabels[status] ?? status;
+}
+
+function formatFullDate(value?: string | null) {
+  if (!value) return "--";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "--";
+
+  return date.toLocaleDateString("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
+function readProposalDraft(): ProposalDraft {
+  try {
+    const raw = sessionStorage.getItem(PROPOSAL_DRAFT_KEY);
+    return raw
+      ? {
+          ...emptyProposalDraft,
+          ...(JSON.parse(raw) as Partial<ProposalDraft>),
+        }
+      : emptyProposalDraft;
+  } catch {
+    return emptyProposalDraft;
+  }
+}
+
+function writeProposalDraft(draft: ProposalDraft) {
+  sessionStorage.setItem(PROPOSAL_DRAFT_KEY, JSON.stringify(draft));
+}
+
+function toSubmitProposalRequest(draft: ProposalDraft): SubmitProposalRequest {
+  return {
+    clubName: draft.clubName.trim(),
+    category: draft.category,
+    description: draft.description.trim(),
+    mission: draft.mission.trim(),
+    reason: draft.reason.trim(),
+    activityPlan: draft.activityPlan.trim(),
+    founderInfo: draft.founderInfo.trim(),
+    founderStudentCode: draft.founderStudentCode.trim(),
+    contactEmail: draft.contactEmail.trim(),
+    contactPhone: draft.contactPhone.trim(),
+    advisor: draft.advisor.trim(),
+    notes: draft.notes.trim(),
+  };
+}
+
 function isClubManager(membership?: MyMembership) {
   return (
     membership?.status === "Approved" &&
@@ -178,6 +286,55 @@ function getRankLabel(totalPoints: number) {
   return "Mới";
 }
 
+function getPointTypeLabel(type?: string | null) {
+  const labels: Record<string, string> = {
+    CheckIn: "Check-in sự kiện",
+    Activity: "Hoạt động CLB",
+    Support: "Hỗ trợ tổ chức",
+    Feedback: "Feedback hoạt động",
+    Absence: "Vắng mặt",
+    Bonus: "Điểm thưởng",
+    Penalty: "Trừ điểm",
+  };
+
+  if (!type) return "Hoạt động CLB";
+  return labels[type] ?? type;
+}
+
+function formatPointValue(points: number) {
+  return points > 0 ? `+${points}` : String(points);
+}
+
+function getEventStatusLabel(status?: string | null) {
+  const labels: Record<string, string> = {
+    Draft: "Bản nháp",
+    Published: "Đang mở đăng ký",
+    Ongoing: "Đang diễn ra",
+    Completed: "Đã kết thúc",
+    Cancelled: "Đã hủy",
+  };
+
+  if (!status) return "Chưa cập nhật";
+  return labels[status] ?? status;
+}
+
+type MyEventViewModel = EventRegistration & {
+  detail?: EventDto | null;
+};
+
+async function loadMyEventViewModels(): Promise<MyEventViewModel[]> {
+  const data = await eventApi.getMyEvents();
+
+  return Promise.all(
+    data.map(async (registration) => ({
+      ...registration,
+      detail: await eventApi
+        .getEventById(registration.eventId)
+        .catch(() => null),
+    })),
+  );
+}
+
 export function StudentDashboard() {
   const profile = useCurrentProfile();
   const displayName = getProfileDisplayName(profile);
@@ -187,6 +344,7 @@ export function StudentDashboard() {
   const [clubEvents, setClubEvents] = useState<EventDto[]>([]);
   const [pointSummary, setPointSummary] = useState<MyPointSummary | null>(null);
   const [joinedClubCount, setJoinedClubCount] = useState(0);
+  const [showAllClubEvents, setShowAllClubEvents] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -210,26 +368,59 @@ export function StudentDashboard() {
         const approvedMemberships = membershipResult.filter(
           (membership) => membership.status === "Approved",
         );
-        const primaryClubId =
-          approvedMemberships[0]?.clubId ?? clubResult.items[0]?.id;
+        const approvedClubIds = Array.from(
+          new Set(approvedMemberships.map((membership) => membership.clubId)),
+        );
+        const primaryClubId = approvedClubIds[0];
 
         setMyClubs(clubResult.items);
         setMemberships(membershipResult);
         setMyEvents(eventRegistrations);
         setJoinedClubCount(clubResult.totalCount);
 
-        if (primaryClubId) {
-          const [clubEventResult, points] = await Promise.all([
-            eventApi.getClubEvents(primaryClubId, 1, 3).catch(() => null),
-            pointApi.getMyPoints(primaryClubId).catch(() => null),
+        if (approvedClubIds.length > 0) {
+          const [clubEventResults, points] = await Promise.all([
+            Promise.all(
+              approvedClubIds.map((clubId) =>
+                eventApi.getClubEvents(clubId, 1, 20).catch(() => null),
+              ),
+            ),
+            primaryClubId
+              ? pointApi.getMyPoints(primaryClubId).catch(() => null)
+              : Promise.resolve(null),
           ]);
 
           if (ignore) return;
 
-          setClubEvents(clubEventResult?.items ?? []);
+          const eventsById = new Map<string, EventDto>();
+          const now = Date.now();
+
+          clubEventResults.forEach((result) => {
+            result?.items.forEach((event) => {
+              const startTime = new Date(event.startTime).getTime();
+
+              if (
+                ["Published", "Ongoing"].includes(event.status) &&
+                !Number.isNaN(startTime) &&
+                startTime >= now
+              ) {
+                eventsById.set(event.id, event);
+              }
+            });
+          });
+
+          const upcomingEvents = Array.from(eventsById.values()).sort(
+            (first, second) =>
+              new Date(first.startTime).getTime() -
+              new Date(second.startTime).getTime(),
+          );
+
+          setClubEvents(upcomingEvents);
+          setShowAllClubEvents(false);
           setPointSummary(points);
         } else {
           setClubEvents([]);
+          setShowAllClubEvents(false);
           setPointSummary(null);
         }
       } catch (err) {
@@ -262,17 +453,42 @@ export function StudentDashboard() {
   ).length;
   const totalPoints = pointSummary?.totalPoints ?? 0;
   const rankLabel = getRankLabel(totalPoints);
-  const dashboardNotes = [
-    pendingMembershipCount > 0
-      ? `${pendingMembershipCount} yêu cầu tham gia CLB đang chờ duyệt.`
-      : "",
-    myEvents.length > 0
-      ? `Bạn đã đăng ký ${myEvents.length} sự kiện.`
-      : "",
-    approvedMembershipCount > 0
-      ? `Bạn đang là thành viên của ${approvedMembershipCount} CLB.`
-      : "",
-  ].filter(Boolean);
+  const dashboardNotes: Array<{
+    text: string;
+    to: string;
+    tone: "primary" | "blue" | "green";
+  }> = [];
+
+  if (pendingMembershipCount > 0) {
+    dashboardNotes.push({
+      text: `${pendingMembershipCount} yêu cầu tham gia CLB đang chờ duyệt.`,
+      to: "/join-requests",
+      tone: "primary",
+    });
+  }
+
+  if (myEvents.length > 0) {
+    dashboardNotes.push({
+      text: `Bạn đã đăng ký ${myEvents.length} sự kiện.`,
+      to: "/my-events",
+      tone: "blue",
+    });
+  }
+
+  if (approvedMembershipCount > 0) {
+    dashboardNotes.push({
+      text: `Bạn đang là thành viên của ${approvedMembershipCount} CLB.`,
+      to: "/my-clubs",
+      tone: "green",
+    });
+  }
+  const upcomingClubEvents = clubEvents.filter(
+    (event) => !["Completed", "Cancelled"].includes(event.status),
+  );
+  const visibleClubEvents = showAllClubEvents
+    ? upcomingClubEvents
+    : upcomingClubEvents.slice(0, 3);
+  const hiddenClubEventCount = Math.max(upcomingClubEvents.length - 3, 0);
 
   return (
     <main className="page-shell">
@@ -290,9 +506,9 @@ export function StudentDashboard() {
               <Sparkles className="h-4 w-4" />
               Đề xuất CLB
             </Link>
-            <Link to="/events" className="btn-primary">
+            <Link to="/my-events" className="btn-primary">
               <CalendarDays className="h-4 w-4" />
-              Đăng ký sự kiện
+              Sự kiện của tôi
             </Link>
           </>
         }
@@ -365,7 +581,7 @@ export function StudentDashboard() {
 
                   return (
                     <Link
-                      to={`/clubs/${club.id}`}
+                      to={`/my-clubs/${club.id}`}
                       className="rounded-xl border p-4 transition hover:bg-primary-soft"
                       key={club.id}
                     >
@@ -396,16 +612,16 @@ export function StudentDashboard() {
                 Đang tải sự kiện...
               </p>
             )}
-            {!loading && clubEvents.length === 0 && (
+            {!loading && upcomingClubEvents.length === 0 && (
               <EmptyState
                 title="Chưa có sự kiện để theo dõi"
                 description="Các sự kiện từ CLB bạn tham gia sẽ xuất hiện tại đây."
               />
             )}
             {!loading &&
-              clubEvents.map((event) => (
+              visibleClubEvents.map((event) => (
                 <Link
-                  to={`/events/${event.id}`}
+                  to={`/my-events/${event.id}`}
                   key={event.id}
                   className="mb-3 flex items-center gap-4 rounded-xl border p-4 hover:bg-primary-soft"
                 >
@@ -422,11 +638,22 @@ export function StudentDashboard() {
                   <ChevronRight className="ml-auto text-muted" />
                 </Link>
               ))}
+            {!loading && hiddenClubEventCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowAllClubEvents((current) => !current)}
+                className="btn-secondary mt-2 w-full"
+              >
+                {showAllClubEvents
+                  ? "Thu gọn"
+                  : `Xem thêm ${hiddenClubEventCount} sự kiện`}
+              </button>
+            )}
           </SectionCard>
         </div>
         <aside className="space-y-6">
           <SectionCard
-            title="Thông báo mới nhất"
+            title="Cập nhật của bạn"
             action={
               <span className="grid h-6 w-6 place-items-center rounded-full bg-primary text-xs font-bold text-white">
                 {dashboardNotes.length}
@@ -434,21 +661,29 @@ export function StudentDashboard() {
             }
           >
             {dashboardNotes.length > 0 ? (
-              <div className="space-y-5">
-                {dashboardNotes.map((note, index) => (
-                  <div key={note} className="flex gap-3">
+              <div className="space-y-3">
+                {dashboardNotes.map((note) => (
+                  <Link
+                    key={note.to}
+                    to={note.to}
+                    className="flex gap-3 rounded-xl p-2 transition hover:bg-primary-soft"
+                  >
                     <span
                       className={`mt-1 h-2.5 w-2.5 rounded-full ${
-                        index ? "bg-sky-500" : "bg-primary"
+                        note.tone === "blue"
+                          ? "bg-sky-500"
+                          : note.tone === "green"
+                            ? "bg-fpt-green"
+                            : "bg-primary"
                       }`}
                     />
                     <div>
-                      <div className="font-semibold leading-6">{note}</div>
+                      <div className="font-semibold leading-6">{note.text}</div>
                       <div className="mt-1 text-xs text-muted">
-                        Cập nhật từ hoạt động của bạn
+                        Xem chi tiết
                       </div>
                     </div>
-                  </div>
+                  </Link>
                 ))}
               </div>
             ) : (
@@ -457,9 +692,6 @@ export function StudentDashboard() {
                 description="Các cập nhật liên quan đến CLB và sự kiện của bạn sẽ xuất hiện tại đây."
               />
             )}
-            <Link to="/notifications" className="btn-secondary mt-5 w-full">
-              Xem tất cả thông báo
-            </Link>
           </SectionCard>
           <div className="rounded-2xl bg-gradient-to-br from-primary to-primary-dark p-6 text-white shadow-card">
             <Sparkles />
@@ -485,6 +717,7 @@ export function ProfilePage() {
   const [profile, setProfileState] = useState<UserProfile | null>(() =>
     getProfile(),
   );
+  const [profileClubs, setProfileClubs] = useState<ClubSummary[]>([]);
   const [loading, setLoading] = useState(!profile);
   const [error, setError] = useState("");
 
@@ -496,11 +729,15 @@ export function ProfilePage() {
       setError("");
 
       try {
-        const data = await authApi.getMe();
+        const [data, clubResult] = await Promise.all([
+          authApi.getMe(),
+          clubApi.getMyClubs(1, 4).catch(() => null),
+        ]);
         if (ignore) return;
 
         setProfileState(data);
         setProfile(data);
+        setProfileClubs(clubResult?.items ?? []);
       } catch (err) {
         if (ignore) return;
 
@@ -593,45 +830,39 @@ export function ProfilePage() {
         </div>
         <div className="space-y-6">
           <SectionCard title="Câu lạc bộ hiện tại">
-            <div className="grid gap-4 sm:grid-cols-2">
-              {clubs.slice(0, 2).map((c) => (
-                <Link
-                  to={`/clubs/${c.id}`}
-                  className="rounded-xl border p-4 hover:bg-primary-soft"
-                  key={c.id}
-                >
-                  <h3 className="font-bold">{c.name}</h3>
-                  <p className="text-sm text-muted">{c.category}</p>
-                </Link>
-              ))}
-            </div>
+            {loading && profileClubs.length === 0 ? (
+              <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-muted">
+                Đang tải câu lạc bộ của bạn...
+              </p>
+            ) : profileClubs.length > 0 ? (
+              <div className="grid gap-4 sm:grid-cols-2">
+                {profileClubs.map((club) => (
+                  <Link
+                    to={`/my-clubs/${club.id}`}
+                    className="rounded-xl border p-4 hover:bg-primary-soft"
+                    key={club.id}
+                  >
+                    <h3 className="font-bold">{club.name}</h3>
+                    <p className="text-sm text-muted">{club.category}</p>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <EmptyState
+                title="Bạn chưa tham gia CLB nào"
+                description="Các câu lạc bộ bạn đã tham gia sẽ xuất hiện tại đây."
+              />
+            )}
           </SectionCard>
           <SectionCard title="Hoạt động gần đây">
-            <ActivityList />
+            <EmptyState
+              title="Chưa có hoạt động gần đây"
+              description="Các hoạt động từ hệ thống và câu lạc bộ sẽ xuất hiện tại đây khi có dữ liệu."
+            />
           </SectionCard>
         </div>
       </div>
     </main>
-  );
-}
-function ActivityList() {
-  return (
-    <div className="space-y-4">
-      {auditLogs.slice(0, 3).map(([time, actor, text, status]) => (
-        <div key={text} className="flex gap-4 rounded-xl bg-slate-50 p-4">
-          <span className="grid h-10 w-10 place-items-center rounded-full bg-primary-soft text-primary">
-            <Activity className="h-5 w-5" />
-          </span>
-          <div>
-            <div className="text-xs text-muted">
-              {time} · {actor}
-            </div>
-            <div className="mt-1 font-semibold">{text}</div>
-            <StatusBadge status={status} />
-          </div>
-        </div>
-      ))}
-    </div>
   );
 }
 export function EditProfilePage() {
@@ -939,7 +1170,9 @@ export function AccountSecurityPage() {
       setConfirmPassword("");
       setSuccess("Cập nhật mật khẩu thành công.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Cập nhật mật khẩu thất bại.");
+      setError(
+        err instanceof Error ? err.message : "Cập nhật mật khẩu thất bại.",
+      );
     } finally {
       setLoading(false);
     }
@@ -1024,7 +1257,11 @@ export function AccountSecurityPage() {
               <Link to="/dashboard" className="btn-secondary justify-center">
                 Về trang chính
               </Link>
-              <button type="button" onClick={loginAgain} className="btn-primary">
+              <button
+                type="button"
+                onClick={loginAgain}
+                className="btn-primary"
+              >
                 Đăng nhập lại
               </button>
             </div>
@@ -1035,66 +1272,67 @@ export function AccountSecurityPage() {
   );
 }
 export function NotificationsPage() {
-  const notes = [
-    "Nhắc nhở: Cuộc họp Câu lạc bộ Tiếng Anh",
-    "Bảo trì hệ thống định kỳ",
-    "Nguyễn Minh Tú đã tham gia CLB Media",
-    "Lỗi đăng ký hoạt động",
+  const quickLinks = [
+    {
+      title: "Sự kiện của tôi",
+      description: "Theo dõi sự kiện đã đăng ký và trạng thái check-in.",
+      to: "/my-events",
+      icon: CalendarDays,
+    },
+    {
+      title: "Yêu cầu tham gia CLB",
+      description: "Kiểm tra các yêu cầu đang chờ duyệt hoặc đã xử lý.",
+      to: "/join-requests",
+      icon: CheckCircle2,
+    },
+    {
+      title: "CLB của tôi",
+      description: "Xem danh sách câu lạc bộ bạn đang tham gia.",
+      to: "/my-clubs",
+      icon: Users,
+    },
   ];
+
   return (
     <main className="page-shell">
       <PageTitle
         title="Trung tâm thông báo"
         description="Theo dõi cập nhật quan trọng từ hệ thống và các câu lạc bộ."
-        actions={
-          <button className="btn-secondary">
-            <CheckCircle2 className="h-4 w-4" />
-            Đánh dấu tất cả đã đọc
-          </button>
-        }
       />
-      <div className="grid gap-6 lg:grid-cols-[240px_1fr]">
-        <aside className="card h-fit p-4">
-          <div className="grid gap-2">
-            {[
-              "Tất cả",
-              "Chưa đọc",
-              "Hệ thống",
-              "Sự kiện",
-              "Thành viên CLB",
-            ].map((x, i) => (
-              <button
-                key={x}
-                className={`flex items-center gap-3 rounded-xl px-4 py-3 text-left font-semibold ${i === 0 ? "bg-primary-soft text-primary" : "hover:bg-slate-100"}`}
-              >
-                <Bell className="h-4 w-4" />
-                {x}
-              </button>
-            ))}
-          </div>
-        </aside>
-        <section className="card overflow-hidden">
-          {notes.map((title, i) => (
-            <article key={title} className="flex gap-4 border-b p-5 sm:p-7">
+
+      <SectionCard title="Thông báo">
+        <EmptyState
+          title="Chưa có thông báo mới"
+          description="Các thông báo từ hệ thống và câu lạc bộ sẽ xuất hiện tại đây khi có cập nhật."
+        />
+      </SectionCard>
+
+      <section className="mt-6 grid gap-4 md:grid-cols-3">
+        {quickLinks.map((item) => {
+          const Icon = item.icon;
+
+          return (
+            <Link
+              key={item.to}
+              to={item.to}
+              className="card group flex items-start gap-4 p-5 transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-card"
+            >
               <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-primary-soft text-primary">
-                <Bell />
+                <Icon className="h-5 w-5" />
               </span>
-              <div>
-                <h2 className="text-lg font-bold">{title}</h2>
-                <p className="mt-1 text-muted">
-                  Nội dung thông báo mẫu theo thiết kế Stitch.
-                </p>
-                <StatusBadge
-                  status={i === 3 ? "WARNING" : i === 1 ? "SYSTEM" : "NEW"}
-                />
-              </div>
-              <div className="ml-auto whitespace-nowrap text-xs text-muted">
-                {i < 2 ? "2 giờ trước" : "Hôm qua"}
-              </div>
-            </article>
-          ))}
-        </section>
-      </div>
+              <span className="min-w-0">
+                <span className="block font-bold text-ink group-hover:text-primary">
+                  {item.title}
+                </span>
+                <span className="mt-1 block text-sm text-muted">
+                  {item.description}
+                </span>
+              </span>
+              <ChevronRight className="ml-auto h-5 w-5 shrink-0 text-muted group-hover:text-primary" />
+            </Link>
+          );
+        })}
+      </section>
     </main>
   );
 }
@@ -1256,7 +1494,9 @@ export function MyClubsPage() {
           <button
             type="button"
             className={
-              selectedCategory === option.value ? "btn-primary" : "btn-secondary"
+              selectedCategory === option.value
+                ? "btn-primary"
+                : "btn-secondary"
             }
             key={option.label}
             onClick={() => setSelectedCategory(option.value)}
@@ -1367,9 +1607,7 @@ export function MyClubsPage() {
                         disabled={joiningClubId === club.id}
                         className="btn-primary justify-center"
                       >
-                        {joiningClubId === club.id
-                          ? "Đang gửi..."
-                          : "Tham gia"}
+                        {joiningClubId === club.id ? "Đang gửi..." : "Tham gia"}
                       </button>
                     ) : (
                       <button
@@ -1393,53 +1631,252 @@ export function MyClubsPage() {
   );
 }
 export function MyEventsPage() {
+  const [registrations, setRegistrations] = useState<MyEventViewModel[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+  const [cancellingId, setCancellingId] = useState("");
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadMyEvents() {
+      setLoading(true);
+      setError("");
+      setSuccessMessage("");
+
+      try {
+        const registrationsWithDetails = await loadMyEventViewModels();
+
+        if (!ignore) {
+          setRegistrations(registrationsWithDetails);
+        }
+      } catch (err) {
+        if (!ignore) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Không tải được sự kiện của bạn.",
+          );
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadMyEvents();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  const cancelRegistration = async (eventId: string) => {
+    setCancellingId(eventId);
+    setError("");
+    setSuccessMessage("");
+
+    try {
+      await eventApi.cancelRegistration(eventId);
+
+      const registrationsWithDetails = await loadMyEventViewModels();
+
+      setRegistrations(registrationsWithDetails);
+      setSuccessMessage("Đã hủy đăng ký sự kiện.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Hủy đăng ký thất bại.");
+    } finally {
+      setCancellingId("");
+    }
+  };
+
+  const canCancelRegistration = (registration: MyEventViewModel) =>
+    !registration.isCheckedIn && registration.detail?.status === "Published";
+
   return (
     <main className="page-shell">
       <PageTitle
         title="Sự kiện của tôi"
-        description="Sự kiện sắp diễn ra, đã tham gia và đã hủy."
+        description="Theo dõi các sự kiện bạn đã đăng ký và trạng thái check-in."
       />
-      <FilterBar
-        actions={["Sắp diễn ra", "Đã tham gia", "Đã hủy"].map((x) => (
-          <button key={x} className="btn-secondary">
-            {x}
-          </button>
-        ))}
-      />
-      <div className="grid gap-4">
-        {events.map((e) => (
-          <section
-            className="card flex flex-col gap-4 p-5 sm:flex-row sm:items-center"
-            key={e.id}
-          >
-            <div className="grid h-16 w-16 place-items-center rounded-xl bg-primary-soft text-center font-bold text-primary">
-              {e.date.split("/")[0]}
-            </div>
-            <div className="flex-1">
-              <h3 className="font-bold">{e.title}</h3>
-              <p className="text-sm text-muted">
-                {e.location} · {e.time}
-              </p>
-            </div>
-            <StatusBadge status={e.status} />
-            <Link to={`/events/${e.id}`} className="btn-secondary">
-              Chi tiết
-            </Link>
-            <button className="btn-ghost text-red-600">Hủy đăng ký</button>
-          </section>
-        ))}
-      </div>
+
+      {error && (
+        <p className="mb-5 rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+          {error}
+        </p>
+      )}
+
+      {successMessage && (
+        <p className="mb-5 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+          {successMessage}
+        </p>
+      )}
+
+      {loading && (
+        <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-muted">
+          Đang tải sự kiện của bạn...
+        </p>
+      )}
+
+      {!loading && registrations.length === 0 && (
+        <div>
+          <EmptyState
+            title="Bạn chưa đăng ký sự kiện nào"
+            description="Hãy khám phá các sự kiện từ câu lạc bộ và đăng ký tham gia."
+          />
+          <Link to="/events" className="btn-primary mt-5 w-fit">
+            Khám phá sự kiện
+          </Link>
+        </div>
+      )}
+
+      {!loading && registrations.length > 0 && (
+        <div className="grid gap-4">
+          {registrations.map((registration) => {
+            const detail = registration.detail;
+            const eventDate = detail?.startTime ?? registration.registeredAt;
+            const canCancel = canCancelRegistration(registration);
+
+            return (
+              <section
+                className="card flex flex-col gap-4 p-5 lg:flex-row lg:items-center"
+                key={registration.id}
+              >
+                <div className="grid h-16 w-16 shrink-0 place-items-center rounded-xl bg-primary-soft text-center font-bold text-primary">
+                  {formatShortDate(eventDate)}
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="font-bold">{registration.eventName}</h3>
+                    <StatusBadge
+                      status={
+                        registration.isCheckedIn ? "Đã check-in" : "Đã đăng ký"
+                      }
+                    />
+                    {detail && (
+                      <StatusBadge
+                        status={getEventStatusLabel(detail.status)}
+                      />
+                    )}
+                  </div>
+                  <div className="mt-2 grid gap-1 text-sm text-muted md:grid-cols-2">
+                    <span>CLB: {detail?.clubName ?? "Chưa cập nhật"}</span>
+                    <span>
+                      Diễn ra: {formatFullDate(detail?.startTime)} ·{" "}
+                      {formatTimeRange(detail?.startTime, detail?.endTime)}
+                    </span>
+                    <span>Địa điểm: {detail?.location || "Chưa cập nhật"}</span>
+                    <span>
+                      Đăng ký lúc{" "}
+                      {formatTimeRange(registration.registeredAt, null)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Link
+                    to={`/my-events/${registration.eventId}`}
+                    className="btn-secondary"
+                  >
+                    Chi tiết
+                  </Link>
+
+                  {canCancel && (
+                    <button
+                      onClick={() => cancelRegistration(registration.eventId)}
+                      disabled={cancellingId === registration.eventId}
+                      className="btn-ghost text-red-600"
+                    >
+                      {cancellingId === registration.eventId
+                        ? "Đang hủy..."
+                        : "Hủy đăng ký"}
+                    </button>
+                  )}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      )}
     </main>
   );
 }
+
 export function JoinRequestsPage() {
+  const [memberships, setMemberships] = useState<MyMembership[]>([]);
+  const [searchText, setSearchText] = useState("");
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "Pending" | "Approved" | "Rejected" | "Left"
+  >("all");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadMemberships() {
+      setLoading(true);
+      setError("");
+
+      try {
+        const data = await membershipApi.getMyMemberships();
+
+        if (!ignore) {
+          setMemberships(data);
+        }
+      } catch (err) {
+        if (!ignore) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Không tải được yêu cầu tham gia CLB.",
+          );
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadMemberships();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  const filteredMemberships = memberships.filter((membership) => {
+    const matchesSearch = membership.clubName
+      .toLowerCase()
+      .includes(searchText.trim().toLowerCase());
+    const matchesStatus =
+      statusFilter === "all" || membership.status === statusFilter;
+
+    return matchesSearch && matchesStatus;
+  });
+
+  const statusOptions: Array<{
+    label: string;
+    value: "all" | "Pending" | "Approved" | "Rejected" | "Left";
+  }> = [
+    { label: "Tất cả", value: "all" },
+    { label: "Đang chờ", value: "Pending" },
+    { label: "Đã duyệt", value: "Approved" },
+    { label: "Đã từ chối", value: "Rejected" },
+    { label: "Đã rời", value: "Left" },
+  ];
+
   return (
     <main className="page-shell">
       <PageTitle
         title="Yêu cầu hội viên của tôi"
         description="Theo dõi trạng thái đơn tham gia CLB."
         actions={
-          <Link to="/clubs" className="btn-primary">
+          <Link to="/my-clubs" className="btn-primary">
             <PlusCircle className="h-4 w-4" />
             Tìm CLB mới
           </Link>
@@ -1447,40 +1884,120 @@ export function JoinRequestsPage() {
       />
       <FilterBar
         placeholder="Tìm câu lạc bộ..."
-        actions={["Tất cả", "Đang chờ", "Đã duyệt", "Đã từ chối"].map((x) => (
-          <button key={x} className="btn-secondary">
-            {x}
+        value={searchText}
+        onChange={setSearchText}
+        actions={statusOptions.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => setStatusFilter(option.value)}
+            className={
+              statusFilter === option.value ? "btn-primary" : "btn-secondary"
+            }
+          >
+            {option.label}
           </button>
         ))}
       />
-      <section className="card overflow-hidden">
-        <DataTable
-          columns={["Tên câu lạc bộ", "Ngày gửi", "Trạng thái", "Hành động"]}
-          rows={clubs
-            .slice(0, 3)
-            .map((c, i) => [
-              c.name,
-              "12/03/2026",
-              <StatusBadge
-                status={i === 0 ? "PENDING" : i === 1 ? "APPROVED" : "REJECTED"}
-              />,
-              <button className="btn-ghost">
-                {i === 0 ? "Hủy yêu cầu" : "Xem thông tin"}
-              </button>,
-            ])}
+
+      {error && (
+        <p className="mb-5 rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+          {error}
+        </p>
+      )}
+
+      {loading && (
+        <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-muted">
+          Đang tải yêu cầu tham gia CLB...
+        </p>
+      )}
+
+      {!loading && filteredMemberships.length === 0 && (
+        <EmptyState
+          title="Chưa có yêu cầu phù hợp"
+          description="Các yêu cầu tham gia CLB của bạn sẽ xuất hiện tại đây."
         />
-      </section>
+      )}
+
+      {!loading && filteredMemberships.length > 0 && (
+        <section className="card overflow-hidden">
+          <DataTable
+            columns={["Tên câu lạc bộ", "Ngày gửi", "Vai trò", "Trạng thái"]}
+            rows={filteredMemberships.map((membership) => [
+              membership.clubName,
+              formatShortDate(membership.requestedAt),
+              membership.roleInClub,
+              <StatusBadge status={getMembershipStatusLabel(membership)} />,
+            ])}
+          />
+        </section>
+      )}
     </main>
   );
 }
+
 export function ClubProposalsPage() {
+  const [items, setItems] = useState<ProposalSummary[]>([]);
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState<ProposalStatus | "All">("All");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadProposals() {
+      setLoading(true);
+      setError("");
+
+      try {
+        const data = await proposalApi.getMyProposals();
+        if (!ignore) {
+          setItems(data);
+        }
+      } catch (err) {
+        if (!ignore) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Không tải được danh sách đề xuất.",
+          );
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadProposals();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  const filteredItems = items.filter((item) => {
+    const matchesQuery =
+      !query.trim() ||
+      item.clubName.toLowerCase().includes(query.trim().toLowerCase()) ||
+      item.category.toLowerCase().includes(query.trim().toLowerCase());
+    const matchesStatus = status === "All" || item.status === status;
+
+    return matchesQuery && matchesStatus;
+  });
+
   return (
     <main className="page-shell">
       <PageTitle
         title="Đề xuất của tôi"
         description="Quản lý hồ sơ đề xuất thành lập CLB."
         actions={
-          <Link to="/club-proposals/new/step-1" className="btn-primary">
+          <Link
+            to="/club-proposals/new/step-1"
+            className="btn-primary"
+            onClick={() => sessionStorage.removeItem(PROPOSAL_DRAFT_KEY)}
+          >
             <PlusCircle className="h-4 w-4" />
             Tạo đề xuất mới
           </Link>
@@ -1488,88 +2005,255 @@ export function ClubProposalsPage() {
       />
       <FilterBar
         placeholder="Tìm kiếm tên câu lạc bộ..."
-        actions={[
-          "Tất cả",
-          "Bản nháp",
-          "Đã gửi",
-          "Cần chỉnh sửa",
-          "Đã duyệt",
-        ].map((x) => (
-          <button key={x} className="btn-secondary">
-            {x}
-          </button>
-        ))}
+        value={query}
+        onChange={setQuery}
+        actions={proposalStatusOptions.map((option) => {
+          const selected =
+            option.value === undefined
+              ? status === "All"
+              : status === option.value;
+
+          return (
+            <button
+              key={option.label}
+              type="button"
+              className={selected ? "btn-primary" : "btn-secondary"}
+              onClick={() => setStatus(option.value ?? "All")}
+            >
+              {option.label}
+            </button>
+          );
+        })}
       />
-      <section className="card overflow-hidden">
-        <DataTable
-          columns={["Tên câu lạc bộ", "Ngày gửi", "Trạng thái", "Hành động"]}
-          rows={proposals.map((p) => [
-            p.name,
-            p.date,
-            <StatusBadge status={p.status} />,
-            <Link to={`/club-proposals/${p.id}`} className="btn-ghost">
-              Xem chi tiết
-            </Link>,
-          ])}
+      {loading && (
+        <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-muted">
+          Đang tải đề xuất của bạn...
+        </p>
+      )}
+      {error && (
+        <p className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+          {error}
+        </p>
+      )}
+      {!loading && !error && filteredItems.length === 0 && (
+        <EmptyState
+          title="Chưa có đề xuất phù hợp"
+          description="Bạn có thể tạo đề xuất CLB mới hoặc điều chỉnh bộ lọc hiện tại."
         />
-      </section>
+      )}
+      {!loading && !error && filteredItems.length > 0 && (
+        <section className="card overflow-hidden">
+          <DataTable
+            columns={[
+              "Tên câu lạc bộ",
+              "Lĩnh vực",
+              "Ngày gửi",
+              "Trạng thái",
+              "Hành động",
+            ]}
+            rows={filteredItems.map((proposal) => [
+              proposal.clubName,
+              getClubCategoryLabel(proposal.category),
+              formatFullDate(proposal.submittedAt),
+              <StatusBadge status={getProposalStatusLabel(proposal.status)} />,
+              <Link to={`/club-proposals/${proposal.id}`} className="btn-ghost">
+                Xem chi tiết
+              </Link>,
+            ])}
+          />
+        </section>
+      )}
     </main>
   );
 }
+
 export function ClubProposalDetailPage() {
-  const p = proposals[1];
+  const { id } = useParams();
+  const [proposal, setProposal] = useState<ProposalDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadProposal() {
+      if (!id) {
+        setError("Không tìm thấy mã đề xuất.");
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      setError("");
+
+      try {
+        const data = await proposalApi.getProposalById(id);
+        if (!ignore) {
+          setProposal(data);
+        }
+      } catch (err) {
+        if (!ignore) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Không tải được chi tiết đề xuất.",
+          );
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadProposal();
+
+    return () => {
+      ignore = true;
+    };
+  }, [id]);
+
+  if (loading) {
+    return (
+      <main className="page-shell">
+        <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-muted">
+          Đang tải chi tiết đề xuất...
+        </p>
+      </main>
+    );
+  }
+
+  if (error || !proposal) {
+    return (
+      <main className="page-shell">
+        <EmptyState
+          title="Không tải được đề xuất"
+          description={error || "Đề xuất không tồn tại hoặc đã bị xóa."}
+        />
+      </main>
+    );
+  }
+
   return (
     <main className="page-shell">
       <PageTitle
-        eyebrow={p.status}
-        title={p.name}
+        eyebrow={getProposalStatusLabel(proposal.status)}
+        title={proposal.clubName}
         description="Chi tiết hồ sơ đề xuất và phản hồi từ ban quản lý."
         actions={
-          <>
-            <button className="btn-secondary">
-              <FileText className="h-4 w-4" />
-              Chỉnh sửa và gửi lại
-            </button>
-            <button className="btn-ghost text-red-600">
-              <XCircle className="h-4 w-4" />
-              Hủy đề xuất
-            </button>
-          </>
+          <Link to="/club-proposals" className="btn-secondary">
+            Quay lại danh sách
+          </Link>
         }
       />
       <div className="grid gap-6 lg:grid-cols-[1.4fr_.8fr]">
         <SectionCard title="Thông tin đề xuất">
-          <p className="leading-7 text-muted">
-            Mô tả chi tiết, sứ mệnh, kế hoạch hoạt động, người sáng lập và tài
-            liệu đính kèm.
-          </p>
-          <div className="mt-5 grid gap-4 sm:grid-cols-3">
-            <StatCard label="Điểm hồ sơ" value={`${p.score}`} icon={Star} />
+          <div className="grid gap-4 text-sm sm:grid-cols-2">
+            <div>
+              <div className="font-semibold text-muted">Lĩnh vực</div>
+              <div className="mt-1 font-bold">
+                {getClubCategoryLabel(proposal.category)}
+              </div>
+            </div>
+            <div>
+              <div className="font-semibold text-muted">Người đề xuất</div>
+              <div className="mt-1 font-bold">{proposal.submitterName}</div>
+            </div>
+            <div>
+              <div className="font-semibold text-muted">MSSV</div>
+              <div className="mt-1 font-bold">
+                {proposal.founderStudentCode}
+              </div>
+            </div>
+            <div>
+              <div className="font-semibold text-muted">Email liên hệ</div>
+              <div className="mt-1 font-bold">{proposal.contactEmail}</div>
+            </div>
+          </div>
+          <div className="mt-6 grid gap-4 sm:grid-cols-3">
             <StatCard
               label="Ngày gửi"
-              value={p.date}
+              value={formatFullDate(proposal.submittedAt)}
               icon={CalendarDays}
               tone="blue"
             />
             <StatCard
               label="Trạng thái"
-              value={p.status}
+              value={getProposalStatusLabel(proposal.status)}
               icon={ShieldCheck}
               tone="green"
             />
+            <StatCard
+              label="Ngày duyệt"
+              value={formatFullDate(proposal.reviewedAt)}
+              icon={Star}
+              tone="slate"
+            />
+          </div>
+          <div className="mt-6 space-y-5">
+            <div>
+              <h3 className="font-bold">Mô tả</h3>
+              <p className="mt-2 leading-7 text-muted">
+                {proposal.description || "Chưa cập nhật."}
+              </p>
+            </div>
+            <div>
+              <h3 className="font-bold">Sứ mệnh</h3>
+              <p className="mt-2 leading-7 text-muted">
+                {proposal.mission || "Chưa cập nhật."}
+              </p>
+            </div>
+            <div>
+              <h3 className="font-bold">Lý do thành lập</h3>
+              <p className="mt-2 leading-7 text-muted">
+                {proposal.reason || "Chưa cập nhật."}
+              </p>
+            </div>
+            <div>
+              <h3 className="font-bold">Kế hoạch hoạt động</h3>
+              <p className="mt-2 leading-7 text-muted">
+                {proposal.activityPlan || "Chưa cập nhật."}
+              </p>
+            </div>
           </div>
         </SectionCard>
         <SectionCard title="Phản hồi từ Ban quản lý">
-          <p className="text-muted">
-            Cần bổ sung dự trù kinh phí và làm rõ kế hoạch tuyển thành viên
-            trong học kỳ đầu.
+          <StatusBadge status={getProposalStatusLabel(proposal.status)} />
+          <p className="mt-4 text-muted">
+            {proposal.rejectionReason ||
+              "Chưa có phản hồi từ ban quản lý cho đề xuất này."}
           </p>
+          {proposal.notes && (
+            <div className="mt-5 rounded-xl bg-slate-50 p-4 text-sm text-muted">
+              <div className="font-semibold text-ink">Ghi chú của bạn</div>
+              <p className="mt-2">{proposal.notes}</p>
+            </div>
+          )}
         </SectionCard>
       </div>
     </main>
   );
 }
+
 export function ProposalStepPage({ step }: { step: number }) {
+  const navigate = useNavigate();
+  const profile = useCurrentProfile();
+  const [draft, setDraft] = useState<ProposalDraft>(() => {
+    const storedDraft = readProposalDraft();
+
+    return {
+      ...storedDraft,
+      founderInfo:
+        storedDraft.founderInfo || profile?.fullName || profile?.username || "",
+      founderStudentCode:
+        storedDraft.founderStudentCode || profile?.studentCode || "",
+      contactEmail: storedDraft.contactEmail || profile?.email || "",
+      contactPhone: storedDraft.contactPhone || profile?.phone || "",
+    };
+  });
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
   const titles = [
     "Thông tin cơ bản",
     "Tầm nhìn & Mục đích",
@@ -1577,19 +2261,81 @@ export function ProposalStepPage({ step }: { step: number }) {
     "Đính kèm tài liệu",
     "Kiểm tra & Gửi đề xuất",
   ];
+
+  const updateDraft = (field: keyof ProposalDraft, value: string) => {
+    setDraft((current) => {
+      const next = { ...current, [field]: value };
+      writeProposalDraft(next);
+      return next;
+    });
+    setError("");
+  };
+
+  const validateCurrentStep = () => {
+    if (step === 1 || step === 5) {
+      if (!draft.clubName.trim()) return "Vui lòng nhập tên câu lạc bộ.";
+      if (!draft.description.trim()) return "Vui lòng nhập mô tả ngắn gọn.";
+    }
+
+    if (step === 2 || step === 5) {
+      if (!draft.mission.trim()) return "Vui lòng nhập sứ mệnh của CLB.";
+      if (!draft.reason.trim()) return "Vui lòng nhập lý do thành lập.";
+    }
+
+    if (step === 3 || step === 5) {
+      if (!draft.founderInfo.trim())
+        return "Vui lòng nhập họ tên người sáng lập.";
+      if (!draft.founderStudentCode.trim()) return "Vui lòng nhập MSSV.";
+      if (!draft.contactEmail.trim()) return "Vui lòng nhập email liên hệ.";
+    }
+
+    return "";
+  };
+
+  const goNext = async () => {
+    const validationMessage = validateCurrentStep();
+
+    if (validationMessage) {
+      setError(validationMessage);
+      return;
+    }
+
+    writeProposalDraft(draft);
+
+    if (step < 5) {
+      navigate(`/club-proposals/new/step-${step + 1}`);
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    try {
+      await proposalApi.submitProposal(toSubmitProposalRequest(draft));
+      sessionStorage.removeItem(PROPOSAL_DRAFT_KEY);
+      navigate("/club-proposals", { replace: true });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gửi đề xuất thất bại.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <main className="page-shell max-w-5xl">
       <PageTitle
         eyebrow={`Bước ${step}/5`}
         title={titles[step - 1]}
-        description="Wizard đề xuất thành lập CLB theo thiết kế Stitch."
+        description="Hoàn thiện hồ sơ đề xuất thành lập CLB để gửi ban quản lý xét duyệt."
       />
       <section className="card p-6">
         <div className="mb-6 flex gap-2">
-          {[1, 2, 3, 4, 5].map((i) => (
+          {[1, 2, 3, 4, 5].map((item) => (
             <div
-              key={i}
-              className={`h-2 flex-1 rounded-full ${i <= step ? "bg-primary" : "bg-slate-200"}`}
+              key={item}
+              className={`h-2 flex-1 rounded-full ${
+                item <= step ? "bg-primary" : "bg-slate-200"
+              }`}
             />
           ))}
         </div>
@@ -1601,22 +2347,39 @@ export function ProposalStepPage({ step }: { step: number }) {
                 <input
                   className="input"
                   placeholder="VD: Câu lạc bộ Mỹ thuật Sáng tạo"
+                  value={draft.clubName}
+                  onChange={(event) =>
+                    updateDraft("clubName", event.target.value)
+                  }
                 />
               </label>
               <label>
-                <span className="label">Tên viết tắt *</span>
-                <input className="input" placeholder="VD: CAC" />
-              </label>
-              <label>
                 <span className="label">Lĩnh vực *</span>
-                <select className="input">
-                  <option>Công nghệ</option>
-                  <option>Nghệ thuật</option>
+                <select
+                  className="input"
+                  value={draft.category}
+                  onChange={(event) =>
+                    updateDraft("category", event.target.value)
+                  }
+                >
+                  {clubCategoryOptions
+                    .filter((option) => option.value)
+                    .map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                 </select>
               </label>
               <label className="sm:col-span-2">
                 <span className="label">Mô tả ngắn gọn *</span>
-                <textarea className="input h-28 py-3" />
+                <textarea
+                  className="input h-28 py-3"
+                  value={draft.description}
+                  onChange={(event) =>
+                    updateDraft("description", event.target.value)
+                  }
+                />
               </label>
             </>
           )}
@@ -1624,19 +2387,34 @@ export function ProposalStepPage({ step }: { step: number }) {
             <>
               <label className="sm:col-span-2">
                 <span className="label">Sứ mệnh *</span>
-                <textarea className="input h-28 py-3" />
+                <textarea
+                  className="input h-28 py-3"
+                  value={draft.mission}
+                  onChange={(event) =>
+                    updateDraft("mission", event.target.value)
+                  }
+                />
               </label>
               <label className="sm:col-span-2">
                 <span className="label">Lý do thành lập *</span>
-                <textarea className="input h-28 py-3" />
+                <textarea
+                  className="input h-28 py-3"
+                  value={draft.reason}
+                  onChange={(event) =>
+                    updateDraft("reason", event.target.value)
+                  }
+                />
               </label>
-              <label>
-                <span className="label">Kế hoạch học kỳ 1</span>
-                <textarea className="input h-28 py-3" />
-              </label>
-              <label>
-                <span className="label">Kế hoạch học kỳ 2</span>
-                <textarea className="input h-28 py-3" />
+              <label className="sm:col-span-2">
+                <span className="label">Kế hoạch hoạt động</span>
+                <textarea
+                  className="input h-32 py-3"
+                  placeholder="VD: Tuyển thành viên, workshop định kỳ, sự kiện học kỳ..."
+                  value={draft.activityPlan}
+                  onChange={(event) =>
+                    updateDraft("activityPlan", event.target.value)
+                  }
+                />
               </label>
             </>
           )}
@@ -1644,44 +2422,119 @@ export function ProposalStepPage({ step }: { step: number }) {
             <>
               <label>
                 <span className="label">Họ và tên *</span>
-                <input className="input" />
+                <input
+                  className="input"
+                  value={draft.founderInfo}
+                  onChange={(event) =>
+                    updateDraft("founderInfo", event.target.value)
+                  }
+                />
               </label>
               <label>
                 <span className="label">MSSV *</span>
-                <input className="input" />
+                <input
+                  className="input"
+                  value={draft.founderStudentCode}
+                  onChange={(event) =>
+                    updateDraft("founderStudentCode", event.target.value)
+                  }
+                />
               </label>
               <label>
                 <span className="label">Email sinh viên *</span>
-                <input className="input" />
+                <input
+                  className="input"
+                  type="email"
+                  value={draft.contactEmail}
+                  onChange={(event) =>
+                    updateDraft("contactEmail", event.target.value)
+                  }
+                />
               </label>
               <label>
-                <span className="label">Số điện thoại *</span>
-                <input className="input" />
+                <span className="label">Số điện thoại</span>
+                <input
+                  className="input"
+                  value={draft.contactPhone}
+                  onChange={(event) =>
+                    updateDraft("contactPhone", event.target.value)
+                  }
+                />
               </label>
             </>
           )}
           {step === 4 && (
             <>
-              <div className="sm:col-span-2 rounded-2xl border border-dashed p-8 text-center">
+              <label className="sm:col-span-2">
+                <span className="label">Cố vấn dự kiến</span>
+                <input
+                  className="input"
+                  placeholder="Tên giảng viên/cố vấn nếu đã có"
+                  value={draft.advisor}
+                  onChange={(event) =>
+                    updateDraft("advisor", event.target.value)
+                  }
+                />
+              </label>
+              <label className="sm:col-span-2">
+                <span className="label">Ghi chú bổ sung</span>
+                <textarea
+                  className="input h-28 py-3"
+                  value={draft.notes}
+                  onChange={(event) => updateDraft("notes", event.target.value)}
+                />
+              </label>
+              <div className="rounded-2xl border border-dashed p-8 text-center sm:col-span-2">
                 <FileText className="mx-auto text-primary" />
                 <h3 className="mt-3 font-bold">
-                  Tải logo và bản kế hoạch chi tiết
+                  Tài liệu đính kèm sẽ bổ sung sau
                 </h3>
-                <p className="text-sm text-muted">Hỗ trợ PNG, JPG, PDF, DOCX</p>
+                <p className="text-sm text-muted">
+                  Nếu có tài liệu minh chứng, bạn có thể thêm đường dẫn vào
+                  phần ghi chú để hội đồng xem xét.
+                </p>
               </div>
             </>
           )}
           {step === 5 && (
-            <>
-              <SectionCard title="Tóm tắt hồ sơ">
-                <p className="text-muted">
-                  Kiểm tra thông tin chung, ban điều hành, kế hoạch hoạt động và
-                  tài liệu đính kèm trước khi gửi.
-                </p>
-              </SectionCard>
-            </>
-          )}{" "}
+            <SectionCard title="Tóm tắt hồ sơ">
+              <div className="grid gap-4 text-sm sm:grid-cols-2">
+                <div>
+                  <div className="font-semibold text-muted">Tên CLB</div>
+                  <div className="mt-1 font-bold">
+                    {draft.clubName || "Chưa nhập"}
+                  </div>
+                </div>
+                <div>
+                  <div className="font-semibold text-muted">Lĩnh vực</div>
+                  <div className="mt-1 font-bold">
+                    {getClubCategoryLabel(draft.category)}
+                  </div>
+                </div>
+                <div>
+                  <div className="font-semibold text-muted">Người sáng lập</div>
+                  <div className="mt-1 font-bold">
+                    {draft.founderInfo || "Chưa nhập"}
+                  </div>
+                </div>
+                <div>
+                  <div className="font-semibold text-muted">Email liên hệ</div>
+                  <div className="mt-1 font-bold">
+                    {draft.contactEmail || "Chưa nhập"}
+                  </div>
+                </div>
+              </div>
+              <p className="mt-5 leading-7 text-muted">
+                {draft.description || "Chưa có mô tả."}
+              </p>
+            </SectionCard>
+          )}
         </div>
+        {error && (
+          <p className="mt-5 rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+            {error}
+          </p>
+        )}
         <div className="mt-8 flex justify-between">
           <Link
             to={
@@ -1693,50 +2546,219 @@ export function ProposalStepPage({ step }: { step: number }) {
           >
             Quay lại
           </Link>
-          <Link
-            to={
-              step < 5
-                ? `/club-proposals/new/step-${step + 1}`
-                : "/club-proposals"
-            }
+          <button
+            type="button"
+            onClick={goNext}
+            disabled={loading}
             className="btn-primary"
           >
-            {step < 5 ? "Tiếp theo" : "Gửi đề xuất"}
+            {loading ? "Đang gửi..." : step < 5 ? "Tiếp theo" : "Gửi đề xuất"}
             <Send className="h-4 w-4" />
-          </Link>
+          </button>
         </div>
       </section>
     </main>
   );
 }
 export function PointsHistoryPage() {
+  const [myClubs, setMyClubs] = useState<ClubSummary[]>([]);
+  const [selectedClubId, setSelectedClubId] = useState("");
+  const [pointSummary, setPointSummary] = useState<MyPointSummary | null>(null);
+  const [loadingClubs, setLoadingClubs] = useState(true);
+  const [loadingPoints, setLoadingPoints] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadClubs() {
+      setLoadingClubs(true);
+      setError("");
+
+      try {
+        const result = await clubApi.getMyClubs(1, 50);
+
+        if (ignore) return;
+
+        setMyClubs(result.items);
+        setSelectedClubId(result.items[0]?.id ?? "");
+      } catch (err) {
+        if (!ignore) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Không tải được danh sách CLB của bạn.",
+          );
+        }
+      } finally {
+        if (!ignore) {
+          setLoadingClubs(false);
+        }
+      }
+    }
+
+    loadClubs();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadPoints() {
+      if (!selectedClubId) {
+        setPointSummary(null);
+        return;
+      }
+
+      setLoadingPoints(true);
+      setError("");
+
+      try {
+        const data = await pointApi.getMyPoints(selectedClubId);
+
+        if (!ignore) {
+          setPointSummary(data);
+        }
+      } catch (err) {
+        if (!ignore) {
+          setPointSummary(null);
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Không tải được dữ liệu điểm của CLB này.",
+          );
+        }
+      } finally {
+        if (!ignore) {
+          setLoadingPoints(false);
+        }
+      }
+    }
+
+    loadPoints();
+
+    return () => {
+      ignore = true;
+    };
+  }, [selectedClubId]);
+
+  const totalPoints = pointSummary?.totalPoints ?? 0;
+  const rankLabel = getRankLabel(totalPoints);
+  const recentTransactions = pointSummary?.recentTransactions ?? [];
+  const positivePoints = recentTransactions
+    .filter((transaction) => transaction.points > 0)
+    .reduce((sum, transaction) => sum + transaction.points, 0);
+
   return (
     <main className="page-shell">
       <PageTitle
         title="Lịch sử điểm thành viên"
         description="Theo dõi điểm rèn luyện cá nhân trong CLB."
       />
-      <div className="grid gap-4 sm:grid-cols-3">
-        <StatCard label="Tổng điểm" value="850" icon={Medal} />
-        <StatCard
-          label="Check-in"
-          value="+320"
-          icon={CheckCircle2}
-          tone="green"
+      {myClubs.length > 0 && (
+        <div className="mb-5 flex flex-col gap-2 sm:max-w-sm">
+          <label className="text-sm font-bold text-muted" htmlFor="point-club">
+            Chọn câu lạc bộ
+          </label>
+          <select
+            id="point-club"
+            value={selectedClubId}
+            onChange={(event) => setSelectedClubId(event.target.value)}
+            className="h-12 rounded-2xl border bg-white px-4 font-semibold outline-none transition focus:border-primary"
+          >
+            {myClubs.map((club) => (
+              <option key={club.id} value={club.id}>
+                {club.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      {error && (
+        <p className="mb-5 rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+          {error}
+        </p>
+      )}
+      {!loadingClubs && myClubs.length === 0 && (
+        <EmptyState
+          title="Bạn chưa tham gia CLB nào"
+          description="Hãy gửi yêu cầu tham gia CLB để bắt đầu tích lũy điểm hoạt động."
         />
-        <StatCard label="Feedback" value="+42" icon={Star} tone="blue" />
-      </div>
-      <section className="card mt-6 overflow-hidden">
-        <DataTable
-          columns={["Thời gian", "Hoạt động", "Số điểm", "Trạng thái"]}
-          rows={auditLogs.map(([time, , text, status]) => [
-            time,
-            text,
-            "+10",
-            <StatusBadge status={status} />,
-          ])}
-        />
-      </section>
+      )}
+      {(loadingClubs || myClubs.length > 0) && (
+        <>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <StatCard
+              label="Tổng điểm"
+              value={loadingPoints ? "..." : String(totalPoints)}
+              meta={pointSummary ? pointSummary.clubName : "Theo CLB đã chọn"}
+              icon={Medal}
+            />
+            <StatCard
+              label="Xếp hạng CLB"
+              value={
+                loadingPoints
+                  ? "..."
+                  : pointSummary?.rank
+                    ? `#${pointSummary.rank}`
+                    : "--"
+              }
+              meta={rankLabel}
+              icon={Star}
+              tone="blue"
+            />
+            <StatCard
+              label="Điểm cộng gần đây"
+              value={loadingPoints ? "..." : `+${positivePoints}`}
+              meta={`${recentTransactions.length} giao dịch gần nhất`}
+              icon={CheckCircle2}
+              tone="green"
+            />
+          </div>
+          {loadingPoints && (
+            <div className="mt-6">
+              <EmptyState
+                title="Đang tải lịch sử điểm"
+                description="Vui lòng chờ trong giây lát."
+              />
+            </div>
+          )}
+          {!loadingPoints &&
+            selectedClubId &&
+            recentTransactions.length === 0 && (
+              <div className="mt-6">
+                <EmptyState
+                  title="Chưa có lịch sử điểm"
+                  description="Điểm hoạt động của bạn trong CLB này sẽ xuất hiện tại đây."
+                />
+              </div>
+            )}
+          {!loadingPoints && recentTransactions.length > 0 && (
+            <section className="card mt-6 overflow-hidden">
+              <DataTable
+                columns={["Thời gian", "Hoạt động", "Số điểm", "Ghi chú"]}
+                rows={recentTransactions.map((transaction) => [
+                  formatFullDate(transaction.createdAt),
+                  getPointTypeLabel(transaction.type),
+                  <span
+                    className={
+                      transaction.points >= 0
+                        ? "font-bold text-fpt-green-dark"
+                        : "font-bold text-red-600"
+                    }
+                  >
+                    {formatPointValue(transaction.points)}
+                  </span>,
+                  transaction.note || "--",
+                ])}
+              />
+            </section>
+          )}
+        </>
+      )}
     </main>
   );
 }

@@ -86,6 +86,60 @@ export function RequireGuest() {
   return <Outlet />;
 }
 
+export function RequireGuestLanding() {
+  const { isAuthenticated, profile } = getAuthState();
+  const [homePath, setHomePath] = useState<string | null>(null);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function resolveHomePath() {
+      if (!isAuthenticated) {
+        setHomePath(null);
+        return;
+      }
+
+      if (profile?.systemRole === "UniversityAdmin") {
+        setHomePath("/system-admin");
+        return;
+      }
+
+      try {
+        const memberships = await membershipApi.getMyMemberships();
+        if (!ignore) {
+          setHomePath(
+            hasClubAdminPermission(memberships) ? "/club-admin" : "/dashboard",
+          );
+        }
+      } catch {
+        if (!ignore) {
+          setHomePath("/dashboard");
+        }
+      }
+    }
+
+    resolveHomePath();
+
+    return () => {
+      ignore = true;
+    };
+  }, [isAuthenticated, profile?.systemRole]);
+
+  if (!isAuthenticated) {
+    return <Outlet />;
+  }
+
+  if (profile?.systemRole === "UniversityAdmin") {
+    return <Navigate to={getHomePath(profile)} replace />;
+  }
+
+  if (!homePath) {
+    return <GuardLoading message="Đang kiểm tra phiên đăng nhập..." />;
+  }
+
+  return <Navigate to={homePath} replace />;
+}
+
 export function RequireAuth() {
   const location = useLocation();
   const { isAuthenticated } = getAuthState();

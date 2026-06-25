@@ -89,16 +89,16 @@ function LogoutButton({
 }) {
   const navigate = useNavigate();
 
-  const handleLogout = async () => {
-    try {
-      await authApi.logout();
-    } catch (error) {
+  const handleLogout = () => {
+    const logoutRequest = authApi.logout().catch((error) => {
       console.error("Error occurred while logging out:", error);
-    } finally {
-      clearAuthSession();
-      sessionStorage.clear();
-      navigate("/login", { replace: true });
-    }
+    });
+
+    clearAuthSession();
+    sessionStorage.clear();
+    navigate("/login", { replace: true });
+
+    void logoutRequest;
   };
 
   return (

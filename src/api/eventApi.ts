@@ -1,4 +1,5 @@
 import { apiRequest } from "./http";
+import { clubApi } from "./clubApi";
 import type { PagedResult } from "../types/common";
 import type { EventDto, EventRegistration } from "../types/event";
 
@@ -25,6 +26,39 @@ export const eventApi = {
 
   getEventById(eventId: string) {
     return apiRequest<EventDto>(`/api/events/${eventId}`, { auth: false });
+  },
+
+  async getPublicUpcomingEvents(limit = 20) {
+    const clubResult = await clubApi.getClubs({ page: 1, pageSize: 50 });
+    const eventResults = await Promise.all(
+      clubResult.items.map((club) =>
+        eventApi.getClubEvents(club.id, 1, 50).catch(() => null),
+      ),
+    );
+    const now = Date.now();
+    const eventsById = new Map<string, EventDto>();
+
+    eventResults.forEach((result) => {
+      result?.items.forEach((event) => {
+        const startTime = new Date(event.startTime).getTime();
+
+        if (
+          event.status === "Published" &&
+          !Number.isNaN(startTime) &&
+          startTime >= now
+        ) {
+          eventsById.set(event.id, event);
+        }
+      });
+    });
+
+    return Array.from(eventsById.values())
+      .sort(
+        (first, second) =>
+          new Date(first.startTime).getTime() -
+          new Date(second.startTime).getTime(),
+      )
+      .slice(0, limit);
   },
 
   getMyEvents() {

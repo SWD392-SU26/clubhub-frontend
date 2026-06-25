@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import {
   RequireClubAdmin,
   RequireGuest,
+  RequireGuestLanding,
   RequireStudent,
   RequireUniversityAdmin,
 } from "./authGuards";
@@ -69,8 +70,13 @@ export default function App() {
   return (
     <AuthBootstrap>
       <Routes>
+        <Route element={<RequireGuestLanding />}>
+          <Route element={<PublicLayout />}>
+            <Route path="/" element={<HomePage />} />
+          </Route>
+        </Route>
+
         <Route element={<PublicLayout />}>
-          <Route path="/" element={<HomePage />} />
           <Route path="/style-guide" element={<StyleGuidePage />} />
           <Route path="/clubs" element={<ClubsExplorePage />} />
           <Route path="/clubs/:id" element={<ClubDetailPage />} />
@@ -95,6 +101,7 @@ export default function App() {
             <Route path="/my-clubs" element={<MyClubsPage />} />
             <Route path="/my-clubs/:id" element={<ClubDetailPage />} />
             <Route path="/my-events" element={<MyEventsPage />} />
+            <Route path="/my-events/:id" element={<EventDetailPage />} />
             <Route path="/join-requests" element={<JoinRequestsPage />} />
             <Route path="/club-proposals" element={<ClubProposalsPage />} />
             <Route
