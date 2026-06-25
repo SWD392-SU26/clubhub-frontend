@@ -21,7 +21,6 @@ import type {
   ClubSummary,
   MyMembership,
 } from "../types/club";
-import { clubs, events } from "../data";
 import {
   DataTable,
   EmptyState,
@@ -32,7 +31,7 @@ import {
   StatCard,
   StatusBadge,
 } from "../components";
-import type { EventDto } from "../types/event";
+import type { EventDto, EventRegistration } from "../types/event";
 
 const fallbackClubImage =
   "https://images.unsplash.com/photo-1542744173-8e7e53415bb0?auto=format&fit=crop&w=1200&q=80";
@@ -76,32 +75,6 @@ function isGuid(value?: string) {
   );
 }
 
-function getMockClubDetail(id?: string): ClubDetail | null {
-  const mockClub = clubs.find((club) => club.id === id);
-
-  if (!mockClub) return null;
-
-  return {
-    id: mockClub.id,
-    name: mockClub.name,
-    category: mockClub.category,
-    description: mockClub.description,
-    logoUrl: null,
-    coverImageUrl: mockClub.image,
-    status: mockClub.status,
-    memberCount: mockClub.members,
-    officers: [
-      {
-        userId: "mock-admin",
-        fullName: mockClub.admin,
-        avatarUrl: null,
-        roleInClub: "ClubAdmin",
-      },
-    ],
-    createdAt: new Date().toISOString(),
-  };
-}
-
 function clubSummaryToDetail(club: ClubSummary): ClubDetail {
   return {
     ...club,
@@ -110,9 +83,6 @@ function clubSummaryToDetail(club: ClubSummary): ClubDetail {
 }
 
 async function getClubDetailFallback(id?: string) {
-  const mockClub = getMockClubDetail(id);
-
-  if (mockClub) return mockClub;
   if (!id || !isGuid(id)) return null;
 
   const publicClubs = await clubApi
@@ -160,34 +130,96 @@ function ClubTile({ club }: { club: ClubTileData }) {
     </article>
   );
 }
+
+function PublicEventCard({
+  event,
+  compact = false,
+}: {
+  event: EventDto;
+  compact?: boolean;
+}) {
+  if (compact) {
+    return (
+      <Link
+        to={`/events/${event.id}`}
+        className="card flex gap-4 p-5 transition hover:-translate-y-0.5 hover:shadow-lift"
+      >
+        <div className="grid h-16 w-16 shrink-0 place-items-center rounded-xl bg-primary-soft text-center text-sm font-extrabold text-primary">
+          {formatEventDate(event.startTime).slice(0, 2)}
+          <span className="block text-[10px]">
+            THÁNG {formatEventDate(event.startTime).slice(3, 5)}
+          </span>
+        </div>
+        <div className="min-w-0">
+          <h3 className="line-clamp-2 font-bold">{event.name}</h3>
+          <p className="mt-1 text-sm text-muted">
+            {event.location || "Chưa cập nhật"} ·{" "}
+            {formatEventTimeRange(event.startTime, event.endTime)}
+          </p>
+          <p className="mt-1 text-xs font-semibold text-primary">
+            {event.clubName}
+          </p>
+        </div>
+      </Link>
+    );
+  }
+
+  return (
+    <Link
+      to={`/events/${event.id}`}
+      className="card overflow-hidden transition hover:-translate-y-1 hover:shadow-lift"
+    >
+      <img
+        src={images.students}
+        className="h-44 w-full object-cover"
+        alt={event.name}
+      />
+      <div className="p-5">
+        <StatusBadge status={event.status} />
+        <h3 className="mt-3 text-lg font-bold">{event.name}</h3>
+        <p className="mt-2 text-sm text-muted">{event.clubName}</p>
+        <div className="mt-4 flex justify-between gap-4 text-sm text-muted">
+          <span>{formatEventDate(event.startTime)}</span>
+          <span>
+            {event.capacity
+              ? `${event.registeredCount}/${event.capacity}`
+              : "Không giới hạn"}
+          </span>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
 export function HomePage() {
   const [featuredClubs, setFeaturedClubs] = useState<ClubSummary[]>([]);
+  const [upcomingEvents, setUpcomingEvents] = useState<EventDto[]>([]);
+  const [eventsLoading, setEventsLoading] = useState(true);
 
   useEffect(() => {
     let ignore = false;
 
-    async function loadFeaturedClubs() {
-      try {
-        const result = await clubApi.getClubs({ page: 1, pageSize: 3 });
-        if (!ignore) {
-          setFeaturedClubs(result.items);
-        }
-      } catch {
-        if (!ignore) {
-          setFeaturedClubs([]);
-        }
+    async function loadLandingData() {
+      setEventsLoading(true);
+
+      const [clubResult, eventResult] = await Promise.all([
+        clubApi.getClubs({ page: 1, pageSize: 3 }).catch(() => null),
+        eventApi.getPublicUpcomingEvents(3).catch(() => []),
+      ]);
+
+      if (!ignore) {
+        setFeaturedClubs(clubResult?.items ?? []);
+        setUpcomingEvents(eventResult);
+        setEventsLoading(false);
       }
     }
 
-    loadFeaturedClubs();
+    loadLandingData();
 
     return () => {
       ignore = true;
     };
   }, []);
-
-  const visibleFeaturedClubs =
-    featuredClubs.length > 0 ? featuredClubs : clubs.slice(0, 3);
 
   return (
     <main>
@@ -293,11 +325,18 @@ export function HomePage() {
               </Link>
             }
           />
-          <div className="grid gap-6 md:grid-cols-3">
-            {visibleFeaturedClubs.map((club) => (
-              <ClubTile key={club.id} club={club} />
-            ))}
-          </div>
+          {featuredClubs.length > 0 ? (
+            <div className="grid gap-6 md:grid-cols-3">
+              {featuredClubs.map((club) => (
+                <ClubTile key={club.id} club={club} />
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              title="Chưa có câu lạc bộ nổi bật"
+              description="Các câu lạc bộ đang hoạt động sẽ xuất hiện tại đây khi được công bố."
+            />
+          )}
         </div>
       </section>
       <section className="page-shell py-20">
@@ -310,28 +349,22 @@ export function HomePage() {
             </Link>
           }
         />
-        <div className="grid gap-4 lg:grid-cols-3">
-          {events.map((event) => (
-            <Link
-              to={`/events/${event.id}`}
-              key={event.id}
-              className="card flex gap-4 p-5 hover:shadow-lift"
-            >
-              <div className="grid h-16 w-16 place-items-center rounded-xl bg-primary-soft text-center text-sm font-extrabold text-primary">
-                {event.date.split("/")[0]}
-                <span className="block text-[10px]">
-                  THÁNG {event.date.split("/")[1]}
-                </span>
-              </div>
-              <div>
-                <h3 className="font-bold">{event.title}</h3>
-                <p className="mt-1 text-sm text-muted">
-                  {event.location} · {event.time}
-                </p>
-              </div>
-            </Link>
-          ))}
-        </div>
+        {eventsLoading ? (
+          <p className="rounded-xl bg-white px-4 py-3 text-sm text-muted">
+            Đang tải sự kiện sắp tới...
+          </p>
+        ) : upcomingEvents.length > 0 ? (
+          <div className="grid gap-4 lg:grid-cols-3">
+            {upcomingEvents.map((event) => (
+              <PublicEventCard key={event.id} event={event} compact />
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            title="Chưa có sự kiện sắp tới"
+            description="Các sự kiện đã mở đăng ký sẽ xuất hiện tại đây khi câu lạc bộ công bố lịch mới."
+          />
+        )}
       </section>
     </main>
   );
@@ -529,6 +562,7 @@ export function ClubDetailPage() {
   const [joinMessage, setJoinMessage] = useState("");
   const [joinSuccess, setJoinSuccess] = useState(false);
   const [upcomingEvents, setUpcomingEvents] = useState<EventDto[]>([]);
+  const [showAllUpcomingEvents, setShowAllUpcomingEvents] = useState(false);
   const [eventsLoading, setEventsLoading] = useState(false);
   const [eventsError, setEventsError] = useState("");
 
@@ -547,18 +581,7 @@ export function ClubDetailPage() {
 
       try {
         if (!isGuid(id)) {
-          const mockClub = getMockClubDetail(id);
-
-          if (!mockClub) {
-            throw new Error("Câu lạc bộ không tồn tại hoặc đã bị ẩn.");
-          }
-
-          if (!ignore) {
-            setClub(mockClub);
-            setCurrentMembership(null);
-          }
-
-          return;
+          throw new Error("Câu lạc bộ không tồn tại hoặc đã bị ẩn.");
         }
 
         const data = await clubApi.getClubById(id);
@@ -618,6 +641,7 @@ export function ClubDetailPage() {
     async function loadClubEvents() {
       if (!club?.id || !isGuid(club.id)) {
         setUpcomingEvents([]);
+        setShowAllUpcomingEvents(false);
         setEventsError("");
         return;
       }
@@ -626,14 +650,16 @@ export function ClubDetailPage() {
       setEventsError("");
 
       try {
-        const result = await eventApi.getClubEvents(club.id, 1, 3);
+        const result = await eventApi.getClubEvents(club.id, 1, 20);
 
         if (!ignore) {
           setUpcomingEvents(result.items);
+          setShowAllUpcomingEvents(false);
         }
       } catch (err) {
         if (!ignore) {
           setUpcomingEvents([]);
+          setShowAllUpcomingEvents(false);
           setEventsError(
             err instanceof Error
               ? err.message
@@ -724,6 +750,13 @@ export function ClubDetailPage() {
     currentMembership?.status === "Pending" ||
     currentMembership?.status === "Approved";
   const officers = club?.officers ?? [];
+  const activeUpcomingEvents = upcomingEvents.filter(
+    (event) => !["Completed", "Cancelled"].includes(event.status),
+  );
+  const visibleUpcomingEvents = showAllUpcomingEvents
+    ? activeUpcomingEvents
+    : activeUpcomingEvents.slice(0, 3);
+  const hiddenUpcomingEventCount = Math.max(activeUpcomingEvents.length - 3, 0);
 
   if (loading) {
     return (
@@ -790,24 +823,6 @@ export function ClubDetailPage() {
                 "Thông tin mô tả câu lạc bộ sẽ được cập nhật sau."}
             </p>
           </SectionCard>
-          <SectionCard title="Ban điều hành">
-            {officers.length > 0 ? (
-              <DataTable
-                columns={["Tên thành viên", "Vai trò"]}
-                rows={officers.map((officer) => [
-                  officer.fullName,
-                  <StatusBadge status={officer.roleInClub} />,
-                ])}
-              />
-            ) : (
-              <EmptyState
-                title="Chưa có ban điều hành"
-                description="Danh sách ban điều hành sẽ được cập nhật sau."
-              />
-            )}
-          </SectionCard>
-        </div>
-        <aside className="space-y-6">
           <SectionCard title="Sự kiện sắp tới">
             {eventsLoading && (
               <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-muted">
@@ -819,15 +834,17 @@ export function ClubDetailPage() {
                 {eventsError}
               </p>
             )}
-            {!eventsLoading && !eventsError && upcomingEvents.length === 0 && (
-              <EmptyState
-                title="Chưa có sự kiện sắp tới"
-                description="Các sự kiện mới của CLB sẽ xuất hiện tại đây."
-              />
-            )}
             {!eventsLoading &&
               !eventsError &&
-              upcomingEvents.map((event) => (
+              activeUpcomingEvents.length === 0 && (
+                <EmptyState
+                  title="Chưa có sự kiện sắp tới"
+                  description="Các sự kiện mới của CLB sẽ xuất hiện tại đây."
+                />
+              )}
+            {!eventsLoading &&
+              !eventsError &&
+              visibleUpcomingEvents.map((event) => (
                 <Link
                   key={event.id}
                   to={`/events/${event.id}`}
@@ -843,6 +860,39 @@ export function ClubDetailPage() {
                   </div>
                 </Link>
               ))}
+            {!eventsLoading && !eventsError && hiddenUpcomingEventCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowAllUpcomingEvents((current) => !current)}
+                className="btn-secondary mt-2 w-full"
+              >
+                {showAllUpcomingEvents
+                  ? "Thu gọn"
+                  : `Xem thêm ${hiddenUpcomingEventCount} sự kiện`}
+              </button>
+            )}
+          </SectionCard>
+        </div>
+        <aside className="space-y-6">
+          <SectionCard title="Ban điều hành">
+            {officers.length > 0 ? (
+              <div className="space-y-3">
+                {officers.map((officer) => (
+                  <div
+                    key={`${officer.userId}-${officer.roleInClub}`}
+                    className="rounded-xl border p-4"
+                  >
+                    <div className="font-bold">{officer.fullName}</div>
+                    <StatusBadge status={officer.roleInClub} />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <EmptyState
+                title="Chưa có ban điều hành"
+                description="Danh sách ban điều hành sẽ được cập nhật sau."
+              />
+            )}
           </SectionCard>
           <SectionCard title="Thông tin liên hệ">
             <p className="text-muted">clubhub@university.edu.vn</p>
@@ -866,6 +916,56 @@ function membersPreview() {
   ];
 }
 export function EventsExplorePage() {
+  const [eventList, setEventList] = useState<EventDto[]>([]);
+  const [searchText, setSearchText] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadEvents() {
+      setLoading(true);
+      setError("");
+
+      try {
+        const data = await eventApi.getPublicUpcomingEvents(100);
+
+        if (!ignore) {
+          setEventList(data);
+        }
+      } catch (err) {
+        if (!ignore) {
+          setEventList([]);
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Không tải được danh sách sự kiện.",
+          );
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadEvents();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  const normalizedSearch = searchText.trim().toLowerCase();
+  const filteredEvents = normalizedSearch
+    ? eventList.filter((event) =>
+        [event.name, event.clubName, event.location]
+          .filter(Boolean)
+          .some((value) => value?.toLowerCase().includes(normalizedSearch)),
+      )
+    : eventList;
+
   return (
     <main className="page-shell">
       <PageTitle
@@ -875,6 +975,8 @@ export function EventsExplorePage() {
       />
       <FilterBar
         placeholder="Tìm kiếm sự kiện..."
+        value={searchText}
+        onChange={setSearchText}
         actions={
           <>
             <button className="btn-secondary">
@@ -884,32 +986,42 @@ export function EventsExplorePage() {
           </>
         }
       />
-      <div className="grid gap-6 lg:grid-cols-3">
-        {events.map((e) => (
-          <Link
-            to={`/events/${e.id}`}
-            key={e.id}
-            className="card overflow-hidden hover:shadow-lift"
-          >
-            <img
-              src={images.students}
-              className="h-44 w-full object-cover"
-              alt=""
-            />
-            <div className="p-5">
-              <StatusBadge status={e.status} />
-              <h3 className="mt-3 text-lg font-bold">{e.title}</h3>
-              <p className="mt-2 text-sm text-muted">{e.club}</p>
-              <div className="mt-4 flex justify-between text-sm text-muted">
-                <span>{e.date}</span>
-                <span>
-                  {e.registered}/{e.capacity}
-                </span>
-              </div>
-            </div>
+      {error && (
+        <p className="mb-5 rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+          {error}
+        </p>
+      )}
+      {loading && (
+        <p className="rounded-xl bg-white px-4 py-3 text-sm text-muted">
+          Đang tải sự kiện công khai...
+        </p>
+      )}
+      {!loading && filteredEvents.length > 0 && (
+        <div className="grid gap-6 lg:grid-cols-3">
+          {filteredEvents.map((event) => (
+            <PublicEventCard key={event.id} event={event} />
+          ))}
+        </div>
+      )}
+      {!loading && filteredEvents.length === 0 && (
+        <>
+          <EmptyState
+            title={
+              searchText.trim()
+                ? "Không tìm thấy sự kiện phù hợp"
+                : "Chưa có sự kiện công khai"
+            }
+            description={
+              searchText.trim()
+                ? "Hãy thử tìm bằng tên sự kiện, câu lạc bộ hoặc địa điểm khác."
+                : "Các sự kiện đang mở đăng ký sẽ xuất hiện tại đây khi câu lạc bộ công bố lịch mới."
+            }
+          />
+          <Link to="/clubs" className="btn-primary mt-5 w-fit">
+            Khám phá câu lạc bộ
           </Link>
-        ))}
-      </div>
+        </>
+      )}
     </main>
   );
 }
@@ -949,15 +1061,35 @@ function formatEventTimeRange(start?: string | null, end?: string | null) {
   return `${startTime} - ${endTime}`;
 }
 
+function getEventActionLabel(status?: string | null) {
+  if (status === "Draft") return "Chưa mở đăng ký";
+  if (status === "Ongoing") return "Đang diễn ra";
+  if (status === "Completed") return "Đã kết thúc";
+  if (status === "Cancelled") return "Đã hủy";
+  return "Không nhận đăng ký";
+}
+
 export function EventDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const [event, setEvent] = useState<EventDto | null>(null);
+  const [myRegistration, setMyRegistration] =
+    useState<EventRegistration | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [registering, setRegistering] = useState(false);
+  const [loadingRegistration, setLoadingRegistration] = useState(false);
   const [message, setMessage] = useState("");
   const [success, setSuccess] = useState(false);
+
+  const loadMyRegistration = async (eventId: string) => {
+    if (!getAccessToken()) return null;
+
+    const registrations = await eventApi.getMyEvents().catch(() => []);
+
+    return registrations.find((item) => item.eventId === eventId) ?? null;
+  };
 
   useEffect(() => {
     let ignore = false;
@@ -970,13 +1102,27 @@ export function EventDetailPage() {
       }
 
       setLoading(true);
+      setLoadingRegistration(Boolean(getAccessToken()));
       setError("");
+      setMessage("");
+      setMyRegistration(null);
 
       try {
         const data = await eventApi.getEventById(id);
 
+        if (data.status === "Draft") {
+          if (!ignore) {
+            setEvent(null);
+            setError("Sự kiện này chưa được công khai.");
+          }
+          return;
+        }
+
+        const registration = await loadMyRegistration(data.id);
+
         if (!ignore) {
           setEvent(data);
+          setMyRegistration(registration);
         }
       } catch (err) {
         if (!ignore) {
@@ -987,6 +1133,7 @@ export function EventDetailPage() {
       } finally {
         if (!ignore) {
           setLoading(false);
+          setLoadingRegistration(false);
         }
       }
     }
@@ -1004,7 +1151,7 @@ export function EventDetailPage() {
     if (!getAccessToken()) {
       navigate("/login", {
         state: {
-          from: `/events/${event.id}`,
+          from: location.pathname,
           message: "Vui lòng đăng nhập để đăng ký sự kiện.",
         },
       });
@@ -1027,6 +1174,18 @@ export function EventDetailPage() {
           : current,
       );
 
+      const syncedRegistration = await loadMyRegistration(event.id);
+
+      setMyRegistration(
+        syncedRegistration ?? {
+          id: "temporary-registration",
+          eventId: event.id,
+          eventName: event.name,
+          isCheckedIn: false,
+          registeredAt: new Date().toISOString(),
+        },
+      );
+
       setSuccess(true);
       setMessage("Đăng ký sự kiện thành công.");
     } catch (err) {
@@ -1034,6 +1193,38 @@ export function EventDetailPage() {
       setMessage(
         err instanceof Error ? err.message : "Đăng ký sự kiện thất bại.",
       );
+    } finally {
+      setRegistering(false);
+    }
+  };
+
+  const cancelRegistration = async () => {
+    if (!event || !myRegistration || myRegistration.isCheckedIn) return;
+
+    setRegistering(true);
+    setMessage("");
+    setSuccess(false);
+
+    try {
+      await eventApi.cancelRegistration(event.id);
+
+      setEvent((current) =>
+        current
+          ? {
+              ...current,
+              registeredCount: Math.max(0, current.registeredCount - 1),
+            }
+          : current,
+      );
+
+      const syncedRegistration = await loadMyRegistration(event.id);
+
+      setMyRegistration(syncedRegistration);
+      setSuccess(true);
+      setMessage("Đã hủy đăng ký sự kiện.");
+    } catch (err) {
+      setSuccess(false);
+      setMessage(err instanceof Error ? err.message : "Hủy đăng ký thất bại.");
     } finally {
       setRegistering(false);
     }
@@ -1060,6 +1251,26 @@ export function EventDetailPage() {
     );
   }
 
+  const isLoggedIn = Boolean(getAccessToken());
+  const isRegistered = Boolean(myRegistration);
+  const isCheckedIn = Boolean(myRegistration?.isCheckedIn);
+  const acceptsRegistration = event.status === "Published";
+  const isFull = Boolean(
+    event.capacity && event.registeredCount >= event.capacity,
+  );
+  const canRegister =
+    isLoggedIn && acceptsRegistration && !isRegistered && !isFull;
+  const canCancel = acceptsRegistration && isRegistered && !isCheckedIn;
+  const registerButtonText = loadingRegistration
+    ? "Đang kiểm tra..."
+    : isFull
+      ? "Đã đủ số lượng"
+      : !acceptsRegistration
+        ? getEventActionLabel(event.status)
+        : !isLoggedIn
+          ? "Đăng nhập để đăng ký"
+          : "Đăng ký tham gia";
+
   return (
     <main className="page-shell">
       <PageTitle
@@ -1072,13 +1283,36 @@ export function EventDetailPage() {
           event.endTime,
         )}`}
         actions={
-          <button
-            onClick={registerEvent}
-            disabled={registering || event.status === "Cancelled"}
-            className="btn-primary"
-          >
-            {registering ? "Đang đăng ký..." : "Đăng ký tham gia"}
-          </button>
+          isRegistered ? (
+            <>
+              <button className="btn-secondary" disabled>
+                {isCheckedIn ? "Đã check-in" : "Đã đăng ký"}
+              </button>
+              {canCancel && (
+                <button
+                  onClick={cancelRegistration}
+                  disabled={registering}
+                  className="btn-ghost text-red-600"
+                >
+                  {registering ? "Đang hủy..." : "Hủy đăng ký"}
+                </button>
+              )}
+            </>
+          ) : (
+            <button
+              onClick={registerEvent}
+              disabled={
+                registering ||
+                loadingRegistration ||
+                !acceptsRegistration ||
+                isFull ||
+                (isLoggedIn && !canRegister)
+              }
+              className="btn-primary"
+            >
+              {registering ? "Đang đăng ký..." : registerButtonText}
+            </button>
+          )
         }
       />
 

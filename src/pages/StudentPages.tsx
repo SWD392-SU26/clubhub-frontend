@@ -1,5 +1,4 @@
 import {
-  Activity,
   Bell,
   CalendarDays,
   Camera,
@@ -37,7 +36,7 @@ import type {
   ProposalSummary,
   SubmitProposalRequest,
 } from "../types/proposal";
-import { clubs, events, members, auditLogs } from "../data";
+import { clubs, events, members } from "../data";
 import {
   DataTable,
   EmptyState,
@@ -209,7 +208,10 @@ function readProposalDraft(): ProposalDraft {
   try {
     const raw = sessionStorage.getItem(PROPOSAL_DRAFT_KEY);
     return raw
-      ? { ...emptyProposalDraft, ...(JSON.parse(raw) as Partial<ProposalDraft>) }
+      ? {
+          ...emptyProposalDraft,
+          ...(JSON.parse(raw) as Partial<ProposalDraft>),
+        }
       : emptyProposalDraft;
   } catch {
     return emptyProposalDraft;
@@ -220,9 +222,7 @@ function writeProposalDraft(draft: ProposalDraft) {
   sessionStorage.setItem(PROPOSAL_DRAFT_KEY, JSON.stringify(draft));
 }
 
-function toSubmitProposalRequest(
-  draft: ProposalDraft,
-): SubmitProposalRequest {
+function toSubmitProposalRequest(draft: ProposalDraft): SubmitProposalRequest {
   return {
     clubName: draft.clubName.trim(),
     category: draft.category,
@@ -286,6 +286,55 @@ function getRankLabel(totalPoints: number) {
   return "Mới";
 }
 
+function getPointTypeLabel(type?: string | null) {
+  const labels: Record<string, string> = {
+    CheckIn: "Check-in sự kiện",
+    Activity: "Hoạt động CLB",
+    Support: "Hỗ trợ tổ chức",
+    Feedback: "Feedback hoạt động",
+    Absence: "Vắng mặt",
+    Bonus: "Điểm thưởng",
+    Penalty: "Trừ điểm",
+  };
+
+  if (!type) return "Hoạt động CLB";
+  return labels[type] ?? type;
+}
+
+function formatPointValue(points: number) {
+  return points > 0 ? `+${points}` : String(points);
+}
+
+function getEventStatusLabel(status?: string | null) {
+  const labels: Record<string, string> = {
+    Draft: "Bản nháp",
+    Published: "Đang mở đăng ký",
+    Ongoing: "Đang diễn ra",
+    Completed: "Đã kết thúc",
+    Cancelled: "Đã hủy",
+  };
+
+  if (!status) return "Chưa cập nhật";
+  return labels[status] ?? status;
+}
+
+type MyEventViewModel = EventRegistration & {
+  detail?: EventDto | null;
+};
+
+async function loadMyEventViewModels(): Promise<MyEventViewModel[]> {
+  const data = await eventApi.getMyEvents();
+
+  return Promise.all(
+    data.map(async (registration) => ({
+      ...registration,
+      detail: await eventApi
+        .getEventById(registration.eventId)
+        .catch(() => null),
+    })),
+  );
+}
+
 export function StudentDashboard() {
   const profile = useCurrentProfile();
   const displayName = getProfileDisplayName(profile);
@@ -295,6 +344,7 @@ export function StudentDashboard() {
   const [clubEvents, setClubEvents] = useState<EventDto[]>([]);
   const [pointSummary, setPointSummary] = useState<MyPointSummary | null>(null);
   const [joinedClubCount, setJoinedClubCount] = useState(0);
+  const [showAllClubEvents, setShowAllClubEvents] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -318,26 +368,59 @@ export function StudentDashboard() {
         const approvedMemberships = membershipResult.filter(
           (membership) => membership.status === "Approved",
         );
-        const primaryClubId =
-          approvedMemberships[0]?.clubId ?? clubResult.items[0]?.id;
+        const approvedClubIds = Array.from(
+          new Set(approvedMemberships.map((membership) => membership.clubId)),
+        );
+        const primaryClubId = approvedClubIds[0];
 
         setMyClubs(clubResult.items);
         setMemberships(membershipResult);
         setMyEvents(eventRegistrations);
         setJoinedClubCount(clubResult.totalCount);
 
-        if (primaryClubId) {
-          const [clubEventResult, points] = await Promise.all([
-            eventApi.getClubEvents(primaryClubId, 1, 3).catch(() => null),
-            pointApi.getMyPoints(primaryClubId).catch(() => null),
+        if (approvedClubIds.length > 0) {
+          const [clubEventResults, points] = await Promise.all([
+            Promise.all(
+              approvedClubIds.map((clubId) =>
+                eventApi.getClubEvents(clubId, 1, 20).catch(() => null),
+              ),
+            ),
+            primaryClubId
+              ? pointApi.getMyPoints(primaryClubId).catch(() => null)
+              : Promise.resolve(null),
           ]);
 
           if (ignore) return;
 
-          setClubEvents(clubEventResult?.items ?? []);
+          const eventsById = new Map<string, EventDto>();
+          const now = Date.now();
+
+          clubEventResults.forEach((result) => {
+            result?.items.forEach((event) => {
+              const startTime = new Date(event.startTime).getTime();
+
+              if (
+                ["Published", "Ongoing"].includes(event.status) &&
+                !Number.isNaN(startTime) &&
+                startTime >= now
+              ) {
+                eventsById.set(event.id, event);
+              }
+            });
+          });
+
+          const upcomingEvents = Array.from(eventsById.values()).sort(
+            (first, second) =>
+              new Date(first.startTime).getTime() -
+              new Date(second.startTime).getTime(),
+          );
+
+          setClubEvents(upcomingEvents);
+          setShowAllClubEvents(false);
           setPointSummary(points);
         } else {
           setClubEvents([]);
+          setShowAllClubEvents(false);
           setPointSummary(null);
         }
       } catch (err) {
@@ -370,15 +453,42 @@ export function StudentDashboard() {
   ).length;
   const totalPoints = pointSummary?.totalPoints ?? 0;
   const rankLabel = getRankLabel(totalPoints);
-  const dashboardNotes = [
-    pendingMembershipCount > 0
-      ? `${pendingMembershipCount} yêu cầu tham gia CLB đang chờ duyệt.`
-      : "",
-    myEvents.length > 0 ? `Bạn đã đăng ký ${myEvents.length} sự kiện.` : "",
-    approvedMembershipCount > 0
-      ? `Bạn đang là thành viên của ${approvedMembershipCount} CLB.`
-      : "",
-  ].filter(Boolean);
+  const dashboardNotes: Array<{
+    text: string;
+    to: string;
+    tone: "primary" | "blue" | "green";
+  }> = [];
+
+  if (pendingMembershipCount > 0) {
+    dashboardNotes.push({
+      text: `${pendingMembershipCount} yêu cầu tham gia CLB đang chờ duyệt.`,
+      to: "/join-requests",
+      tone: "primary",
+    });
+  }
+
+  if (myEvents.length > 0) {
+    dashboardNotes.push({
+      text: `Bạn đã đăng ký ${myEvents.length} sự kiện.`,
+      to: "/my-events",
+      tone: "blue",
+    });
+  }
+
+  if (approvedMembershipCount > 0) {
+    dashboardNotes.push({
+      text: `Bạn đang là thành viên của ${approvedMembershipCount} CLB.`,
+      to: "/my-clubs",
+      tone: "green",
+    });
+  }
+  const upcomingClubEvents = clubEvents.filter(
+    (event) => !["Completed", "Cancelled"].includes(event.status),
+  );
+  const visibleClubEvents = showAllClubEvents
+    ? upcomingClubEvents
+    : upcomingClubEvents.slice(0, 3);
+  const hiddenClubEventCount = Math.max(upcomingClubEvents.length - 3, 0);
 
   return (
     <main className="page-shell">
@@ -502,14 +612,14 @@ export function StudentDashboard() {
                 Đang tải sự kiện...
               </p>
             )}
-            {!loading && clubEvents.length === 0 && (
+            {!loading && upcomingClubEvents.length === 0 && (
               <EmptyState
                 title="Chưa có sự kiện để theo dõi"
                 description="Các sự kiện từ CLB bạn tham gia sẽ xuất hiện tại đây."
               />
             )}
             {!loading &&
-              clubEvents.map((event) => (
+              visibleClubEvents.map((event) => (
                 <Link
                   to={`/my-events/${event.id}`}
                   key={event.id}
@@ -528,11 +638,22 @@ export function StudentDashboard() {
                   <ChevronRight className="ml-auto text-muted" />
                 </Link>
               ))}
+            {!loading && hiddenClubEventCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowAllClubEvents((current) => !current)}
+                className="btn-secondary mt-2 w-full"
+              >
+                {showAllClubEvents
+                  ? "Thu gọn"
+                  : `Xem thêm ${hiddenClubEventCount} sự kiện`}
+              </button>
+            )}
           </SectionCard>
         </div>
         <aside className="space-y-6">
           <SectionCard
-            title="Thông báo mới nhất"
+            title="Cập nhật của bạn"
             action={
               <span className="grid h-6 w-6 place-items-center rounded-full bg-primary text-xs font-bold text-white">
                 {dashboardNotes.length}
@@ -540,21 +661,29 @@ export function StudentDashboard() {
             }
           >
             {dashboardNotes.length > 0 ? (
-              <div className="space-y-5">
-                {dashboardNotes.map((note, index) => (
-                  <div key={note} className="flex gap-3">
+              <div className="space-y-3">
+                {dashboardNotes.map((note) => (
+                  <Link
+                    key={note.to}
+                    to={note.to}
+                    className="flex gap-3 rounded-xl p-2 transition hover:bg-primary-soft"
+                  >
                     <span
                       className={`mt-1 h-2.5 w-2.5 rounded-full ${
-                        index ? "bg-sky-500" : "bg-primary"
+                        note.tone === "blue"
+                          ? "bg-sky-500"
+                          : note.tone === "green"
+                            ? "bg-fpt-green"
+                            : "bg-primary"
                       }`}
                     />
                     <div>
-                      <div className="font-semibold leading-6">{note}</div>
+                      <div className="font-semibold leading-6">{note.text}</div>
                       <div className="mt-1 text-xs text-muted">
-                        Cập nhật từ hoạt động của bạn
+                        Xem chi tiết
                       </div>
                     </div>
-                  </div>
+                  </Link>
                 ))}
               </div>
             ) : (
@@ -563,9 +692,6 @@ export function StudentDashboard() {
                 description="Các cập nhật liên quan đến CLB và sự kiện của bạn sẽ xuất hiện tại đây."
               />
             )}
-            <Link to="/notifications" className="btn-secondary mt-5 w-full">
-              Xem tất cả thông báo
-            </Link>
           </SectionCard>
           <div className="rounded-2xl bg-gradient-to-br from-primary to-primary-dark p-6 text-white shadow-card">
             <Sparkles />
@@ -729,31 +855,14 @@ export function ProfilePage() {
             )}
           </SectionCard>
           <SectionCard title="Hoạt động gần đây">
-            <ActivityList />
+            <EmptyState
+              title="Chưa có hoạt động gần đây"
+              description="Các hoạt động từ hệ thống và câu lạc bộ sẽ xuất hiện tại đây khi có dữ liệu."
+            />
           </SectionCard>
         </div>
       </div>
     </main>
-  );
-}
-function ActivityList() {
-  return (
-    <div className="space-y-4">
-      {auditLogs.slice(0, 3).map(([time, actor, text, status]) => (
-        <div key={text} className="flex gap-4 rounded-xl bg-slate-50 p-4">
-          <span className="grid h-10 w-10 place-items-center rounded-full bg-primary-soft text-primary">
-            <Activity className="h-5 w-5" />
-          </span>
-          <div>
-            <div className="text-xs text-muted">
-              {time} · {actor}
-            </div>
-            <div className="mt-1 font-semibold">{text}</div>
-            <StatusBadge status={status} />
-          </div>
-        </div>
-      ))}
-    </div>
   );
 }
 export function EditProfilePage() {
@@ -1163,66 +1272,67 @@ export function AccountSecurityPage() {
   );
 }
 export function NotificationsPage() {
-  const notes = [
-    "Nhắc nhở: Cuộc họp Câu lạc bộ Tiếng Anh",
-    "Bảo trì hệ thống định kỳ",
-    "Nguyễn Minh Tú đã tham gia CLB Media",
-    "Lỗi đăng ký hoạt động",
+  const quickLinks = [
+    {
+      title: "Sự kiện của tôi",
+      description: "Theo dõi sự kiện đã đăng ký và trạng thái check-in.",
+      to: "/my-events",
+      icon: CalendarDays,
+    },
+    {
+      title: "Yêu cầu tham gia CLB",
+      description: "Kiểm tra các yêu cầu đang chờ duyệt hoặc đã xử lý.",
+      to: "/join-requests",
+      icon: CheckCircle2,
+    },
+    {
+      title: "CLB của tôi",
+      description: "Xem danh sách câu lạc bộ bạn đang tham gia.",
+      to: "/my-clubs",
+      icon: Users,
+    },
   ];
+
   return (
     <main className="page-shell">
       <PageTitle
         title="Trung tâm thông báo"
         description="Theo dõi cập nhật quan trọng từ hệ thống và các câu lạc bộ."
-        actions={
-          <button className="btn-secondary">
-            <CheckCircle2 className="h-4 w-4" />
-            Đánh dấu tất cả đã đọc
-          </button>
-        }
       />
-      <div className="grid gap-6 lg:grid-cols-[240px_1fr]">
-        <aside className="card h-fit p-4">
-          <div className="grid gap-2">
-            {[
-              "Tất cả",
-              "Chưa đọc",
-              "Hệ thống",
-              "Sự kiện",
-              "Thành viên CLB",
-            ].map((x, i) => (
-              <button
-                key={x}
-                className={`flex items-center gap-3 rounded-xl px-4 py-3 text-left font-semibold ${i === 0 ? "bg-primary-soft text-primary" : "hover:bg-slate-100"}`}
-              >
-                <Bell className="h-4 w-4" />
-                {x}
-              </button>
-            ))}
-          </div>
-        </aside>
-        <section className="card overflow-hidden">
-          {notes.map((title, i) => (
-            <article key={title} className="flex gap-4 border-b p-5 sm:p-7">
+
+      <SectionCard title="Thông báo">
+        <EmptyState
+          title="Chưa có thông báo mới"
+          description="Các thông báo từ hệ thống và câu lạc bộ sẽ xuất hiện tại đây khi có cập nhật."
+        />
+      </SectionCard>
+
+      <section className="mt-6 grid gap-4 md:grid-cols-3">
+        {quickLinks.map((item) => {
+          const Icon = item.icon;
+
+          return (
+            <Link
+              key={item.to}
+              to={item.to}
+              className="card group flex items-start gap-4 p-5 transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-card"
+            >
               <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-primary-soft text-primary">
-                <Bell />
+                <Icon className="h-5 w-5" />
               </span>
-              <div>
-                <h2 className="text-lg font-bold">{title}</h2>
-                <p className="mt-1 text-muted">
-                  Nội dung thông báo mẫu theo thiết kế Stitch.
-                </p>
-                <StatusBadge
-                  status={i === 3 ? "WARNING" : i === 1 ? "SYSTEM" : "NEW"}
-                />
-              </div>
-              <div className="ml-auto whitespace-nowrap text-xs text-muted">
-                {i < 2 ? "2 giờ trước" : "Hôm qua"}
-              </div>
-            </article>
-          ))}
-        </section>
-      </div>
+              <span className="min-w-0">
+                <span className="block font-bold text-ink group-hover:text-primary">
+                  {item.title}
+                </span>
+                <span className="mt-1 block text-sm text-muted">
+                  {item.description}
+                </span>
+              </span>
+              <ChevronRight className="ml-auto h-5 w-5 shrink-0 text-muted group-hover:text-primary" />
+            </Link>
+          );
+        })}
+      </section>
     </main>
   );
 }
@@ -1521,9 +1631,10 @@ export function MyClubsPage() {
   );
 }
 export function MyEventsPage() {
-  const [registrations, setRegistrations] = useState<EventRegistration[]>([]);
+  const [registrations, setRegistrations] = useState<MyEventViewModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
   const [cancellingId, setCancellingId] = useState("");
 
   useEffect(() => {
@@ -1532,12 +1643,13 @@ export function MyEventsPage() {
     async function loadMyEvents() {
       setLoading(true);
       setError("");
+      setSuccessMessage("");
 
       try {
-        const data = await eventApi.getMyEvents();
+        const registrationsWithDetails = await loadMyEventViewModels();
 
         if (!ignore) {
-          setRegistrations(data);
+          setRegistrations(registrationsWithDetails);
         }
       } catch (err) {
         if (!ignore) {
@@ -1564,19 +1676,24 @@ export function MyEventsPage() {
   const cancelRegistration = async (eventId: string) => {
     setCancellingId(eventId);
     setError("");
+    setSuccessMessage("");
 
     try {
       await eventApi.cancelRegistration(eventId);
 
-      setRegistrations((current) =>
-        current.filter((item) => item.eventId !== eventId),
-      );
+      const registrationsWithDetails = await loadMyEventViewModels();
+
+      setRegistrations(registrationsWithDetails);
+      setSuccessMessage("Đã hủy đăng ký sự kiện.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Hủy đăng ký thất bại.");
     } finally {
       setCancellingId("");
     }
   };
+
+  const canCancelRegistration = (registration: MyEventViewModel) =>
+    !registration.isCheckedIn && registration.detail?.status === "Published";
 
   return (
     <main className="page-shell">
@@ -1591,6 +1708,12 @@ export function MyEventsPage() {
         </p>
       )}
 
+      {successMessage && (
+        <p className="mb-5 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+          {successMessage}
+        </p>
+      )}
+
       {loading && (
         <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-muted">
           Đang tải sự kiện của bạn...
@@ -1598,54 +1721,84 @@ export function MyEventsPage() {
       )}
 
       {!loading && registrations.length === 0 && (
-        <EmptyState
-          title="Bạn chưa đăng ký sự kiện nào"
-          description="Hãy khám phá các sự kiện từ câu lạc bộ và đăng ký tham gia."
-        />
+        <div>
+          <EmptyState
+            title="Bạn chưa đăng ký sự kiện nào"
+            description="Hãy khám phá các sự kiện từ câu lạc bộ và đăng ký tham gia."
+          />
+          <Link to="/events" className="btn-primary mt-5 w-fit">
+            Khám phá sự kiện
+          </Link>
+        </div>
       )}
 
       {!loading && registrations.length > 0 && (
         <div className="grid gap-4">
-          {registrations.map((registration) => (
-            <section
-              className="card flex flex-col gap-4 p-5 sm:flex-row sm:items-center"
-              key={registration.id}
-            >
-              <div className="grid h-16 w-16 place-items-center rounded-xl bg-primary-soft text-center font-bold text-primary">
-                {formatShortDate(registration.registeredAt)}
-              </div>
+          {registrations.map((registration) => {
+            const detail = registration.detail;
+            const eventDate = detail?.startTime ?? registration.registeredAt;
+            const canCancel = canCancelRegistration(registration);
 
-              <div className="flex-1">
-                <h3 className="font-bold">{registration.eventName}</h3>
-                <p className="text-sm text-muted">
-                  Đăng ký lúc {formatTimeRange(registration.registeredAt, null)}
-                </p>
-              </div>
-
-              <StatusBadge
-                status={registration.isCheckedIn ? "Đã check-in" : "Đã đăng ký"}
-              />
-
-              <Link
-                to={`/events/${registration.eventId}`}
-                className="btn-secondary"
+            return (
+              <section
+                className="card flex flex-col gap-4 p-5 lg:flex-row lg:items-center"
+                key={registration.id}
               >
-                Chi tiết
-              </Link>
+                <div className="grid h-16 w-16 shrink-0 place-items-center rounded-xl bg-primary-soft text-center font-bold text-primary">
+                  {formatShortDate(eventDate)}
+                </div>
 
-              {!registration.isCheckedIn && (
-                <button
-                  onClick={() => cancelRegistration(registration.eventId)}
-                  disabled={cancellingId === registration.eventId}
-                  className="btn-ghost text-red-600"
-                >
-                  {cancellingId === registration.eventId
-                    ? "Đang hủy..."
-                    : "Hủy đăng ký"}
-                </button>
-              )}
-            </section>
-          ))}
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="font-bold">{registration.eventName}</h3>
+                    <StatusBadge
+                      status={
+                        registration.isCheckedIn ? "Đã check-in" : "Đã đăng ký"
+                      }
+                    />
+                    {detail && (
+                      <StatusBadge
+                        status={getEventStatusLabel(detail.status)}
+                      />
+                    )}
+                  </div>
+                  <div className="mt-2 grid gap-1 text-sm text-muted md:grid-cols-2">
+                    <span>CLB: {detail?.clubName ?? "Chưa cập nhật"}</span>
+                    <span>
+                      Diễn ra: {formatFullDate(detail?.startTime)} ·{" "}
+                      {formatTimeRange(detail?.startTime, detail?.endTime)}
+                    </span>
+                    <span>Địa điểm: {detail?.location || "Chưa cập nhật"}</span>
+                    <span>
+                      Đăng ký lúc{" "}
+                      {formatTimeRange(registration.registeredAt, null)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Link
+                    to={`/my-events/${registration.eventId}`}
+                    className="btn-secondary"
+                  >
+                    Chi tiết
+                  </Link>
+
+                  {canCancel && (
+                    <button
+                      onClick={() => cancelRegistration(registration.eventId)}
+                      disabled={cancellingId === registration.eventId}
+                      className="btn-ghost text-red-600"
+                    >
+                      {cancellingId === registration.eventId
+                        ? "Đang hủy..."
+                        : "Hủy đăng ký"}
+                    </button>
+                  )}
+                </div>
+              </section>
+            );
+          })}
         </div>
       )}
     </main>
@@ -1856,7 +2009,9 @@ export function ClubProposalsPage() {
         onChange={setQuery}
         actions={proposalStatusOptions.map((option) => {
           const selected =
-            option.value === undefined ? status === "All" : status === option.value;
+            option.value === undefined
+              ? status === "All"
+              : status === option.value;
 
           return (
             <button
@@ -1901,10 +2056,7 @@ export function ClubProposalsPage() {
               getClubCategoryLabel(proposal.category),
               formatFullDate(proposal.submittedAt),
               <StatusBadge status={getProposalStatusLabel(proposal.status)} />,
-              <Link
-                to={`/club-proposals/${proposal.id}`}
-                className="btn-ghost"
-              >
+              <Link to={`/club-proposals/${proposal.id}`} className="btn-ghost">
                 Xem chi tiết
               </Link>,
             ])}
@@ -2092,10 +2244,7 @@ export function ProposalStepPage({ step }: { step: number }) {
     return {
       ...storedDraft,
       founderInfo:
-        storedDraft.founderInfo ||
-        profile?.fullName ||
-        profile?.username ||
-        "",
+        storedDraft.founderInfo || profile?.fullName || profile?.username || "",
       founderStudentCode:
         storedDraft.founderStudentCode || profile?.studentCode || "",
       contactEmail: storedDraft.contactEmail || profile?.email || "",
@@ -2134,7 +2283,8 @@ export function ProposalStepPage({ step }: { step: number }) {
     }
 
     if (step === 3 || step === 5) {
-      if (!draft.founderInfo.trim()) return "Vui lòng nhập họ tên người sáng lập.";
+      if (!draft.founderInfo.trim())
+        return "Vui lòng nhập họ tên người sáng lập.";
       if (!draft.founderStudentCode.trim()) return "Vui lòng nhập MSSV.";
       if (!draft.contactEmail.trim()) return "Vui lòng nhập email liên hệ.";
     }
@@ -2250,7 +2400,9 @@ export function ProposalStepPage({ step }: { step: number }) {
                 <textarea
                   className="input h-28 py-3"
                   value={draft.reason}
-                  onChange={(event) => updateDraft("reason", event.target.value)}
+                  onChange={(event) =>
+                    updateDraft("reason", event.target.value)
+                  }
                 />
               </label>
               <label className="sm:col-span-2">
@@ -2338,8 +2490,8 @@ export function ProposalStepPage({ step }: { step: number }) {
                   Tài liệu đính kèm sẽ bổ sung sau
                 </h3>
                 <p className="text-sm text-muted">
-                  Backend hiện nhận đường dẫn tài liệu, chưa có API upload file
-                  trực tiếp trong luồng này.
+                  Nếu có tài liệu minh chứng, bạn có thể thêm đường dẫn vào
+                  phần ghi chú để hội đồng xem xét.
                 </p>
               </div>
             </>
@@ -2409,33 +2561,204 @@ export function ProposalStepPage({ step }: { step: number }) {
   );
 }
 export function PointsHistoryPage() {
+  const [myClubs, setMyClubs] = useState<ClubSummary[]>([]);
+  const [selectedClubId, setSelectedClubId] = useState("");
+  const [pointSummary, setPointSummary] = useState<MyPointSummary | null>(null);
+  const [loadingClubs, setLoadingClubs] = useState(true);
+  const [loadingPoints, setLoadingPoints] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadClubs() {
+      setLoadingClubs(true);
+      setError("");
+
+      try {
+        const result = await clubApi.getMyClubs(1, 50);
+
+        if (ignore) return;
+
+        setMyClubs(result.items);
+        setSelectedClubId(result.items[0]?.id ?? "");
+      } catch (err) {
+        if (!ignore) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Không tải được danh sách CLB của bạn.",
+          );
+        }
+      } finally {
+        if (!ignore) {
+          setLoadingClubs(false);
+        }
+      }
+    }
+
+    loadClubs();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadPoints() {
+      if (!selectedClubId) {
+        setPointSummary(null);
+        return;
+      }
+
+      setLoadingPoints(true);
+      setError("");
+
+      try {
+        const data = await pointApi.getMyPoints(selectedClubId);
+
+        if (!ignore) {
+          setPointSummary(data);
+        }
+      } catch (err) {
+        if (!ignore) {
+          setPointSummary(null);
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Không tải được dữ liệu điểm của CLB này.",
+          );
+        }
+      } finally {
+        if (!ignore) {
+          setLoadingPoints(false);
+        }
+      }
+    }
+
+    loadPoints();
+
+    return () => {
+      ignore = true;
+    };
+  }, [selectedClubId]);
+
+  const totalPoints = pointSummary?.totalPoints ?? 0;
+  const rankLabel = getRankLabel(totalPoints);
+  const recentTransactions = pointSummary?.recentTransactions ?? [];
+  const positivePoints = recentTransactions
+    .filter((transaction) => transaction.points > 0)
+    .reduce((sum, transaction) => sum + transaction.points, 0);
+
   return (
     <main className="page-shell">
       <PageTitle
         title="Lịch sử điểm thành viên"
         description="Theo dõi điểm rèn luyện cá nhân trong CLB."
       />
-      <div className="grid gap-4 sm:grid-cols-3">
-        <StatCard label="Tổng điểm" value="850" icon={Medal} />
-        <StatCard
-          label="Check-in"
-          value="+320"
-          icon={CheckCircle2}
-          tone="green"
+      {myClubs.length > 0 && (
+        <div className="mb-5 flex flex-col gap-2 sm:max-w-sm">
+          <label className="text-sm font-bold text-muted" htmlFor="point-club">
+            Chọn câu lạc bộ
+          </label>
+          <select
+            id="point-club"
+            value={selectedClubId}
+            onChange={(event) => setSelectedClubId(event.target.value)}
+            className="h-12 rounded-2xl border bg-white px-4 font-semibold outline-none transition focus:border-primary"
+          >
+            {myClubs.map((club) => (
+              <option key={club.id} value={club.id}>
+                {club.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      {error && (
+        <p className="mb-5 rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+          {error}
+        </p>
+      )}
+      {!loadingClubs && myClubs.length === 0 && (
+        <EmptyState
+          title="Bạn chưa tham gia CLB nào"
+          description="Hãy gửi yêu cầu tham gia CLB để bắt đầu tích lũy điểm hoạt động."
         />
-        <StatCard label="Feedback" value="+42" icon={Star} tone="blue" />
-      </div>
-      <section className="card mt-6 overflow-hidden">
-        <DataTable
-          columns={["Thời gian", "Hoạt động", "Số điểm", "Trạng thái"]}
-          rows={auditLogs.map(([time, , text, status]) => [
-            time,
-            text,
-            "+10",
-            <StatusBadge status={status} />,
-          ])}
-        />
-      </section>
+      )}
+      {(loadingClubs || myClubs.length > 0) && (
+        <>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <StatCard
+              label="Tổng điểm"
+              value={loadingPoints ? "..." : String(totalPoints)}
+              meta={pointSummary ? pointSummary.clubName : "Theo CLB đã chọn"}
+              icon={Medal}
+            />
+            <StatCard
+              label="Xếp hạng CLB"
+              value={
+                loadingPoints
+                  ? "..."
+                  : pointSummary?.rank
+                    ? `#${pointSummary.rank}`
+                    : "--"
+              }
+              meta={rankLabel}
+              icon={Star}
+              tone="blue"
+            />
+            <StatCard
+              label="Điểm cộng gần đây"
+              value={loadingPoints ? "..." : `+${positivePoints}`}
+              meta={`${recentTransactions.length} giao dịch gần nhất`}
+              icon={CheckCircle2}
+              tone="green"
+            />
+          </div>
+          {loadingPoints && (
+            <div className="mt-6">
+              <EmptyState
+                title="Đang tải lịch sử điểm"
+                description="Vui lòng chờ trong giây lát."
+              />
+            </div>
+          )}
+          {!loadingPoints &&
+            selectedClubId &&
+            recentTransactions.length === 0 && (
+              <div className="mt-6">
+                <EmptyState
+                  title="Chưa có lịch sử điểm"
+                  description="Điểm hoạt động của bạn trong CLB này sẽ xuất hiện tại đây."
+                />
+              </div>
+            )}
+          {!loadingPoints && recentTransactions.length > 0 && (
+            <section className="card mt-6 overflow-hidden">
+              <DataTable
+                columns={["Thời gian", "Hoạt động", "Số điểm", "Ghi chú"]}
+                rows={recentTransactions.map((transaction) => [
+                  formatFullDate(transaction.createdAt),
+                  getPointTypeLabel(transaction.type),
+                  <span
+                    className={
+                      transaction.points >= 0
+                        ? "font-bold text-fpt-green-dark"
+                        : "font-bold text-red-600"
+                    }
+                  >
+                    {formatPointValue(transaction.points)}
+                  </span>,
+                  transaction.note || "--",
+                ])}
+              />
+            </section>
+          )}
+        </>
+      )}
     </main>
   );
 }
