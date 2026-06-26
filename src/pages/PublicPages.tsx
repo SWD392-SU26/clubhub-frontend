@@ -15,6 +15,7 @@ import { getAccessToken } from "../api/authStorage";
 import { clubApi } from "../api/clubApi";
 import { membershipApi } from "../api/membershipApi";
 import { eventApi } from "../api/eventApi";
+import { feedbackApi } from "../api/feedbackApi";
 import type {
   ClubCategory,
   ClubDetail,
@@ -32,6 +33,7 @@ import {
   StatusBadge,
 } from "../components";
 import type { EventDto, EventRegistration } from "../types/event";
+import type { FeedbackSummary } from "../types/feedback";
 
 const fallbackClubImage =
   "https://images.unsplash.com/photo-1542744173-8e7e53415bb0?auto=format&fit=crop&w=1200&q=80";
@@ -559,6 +561,11 @@ export function ClubDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [joining, setJoining] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
+  const [joinDialogOpen, setJoinDialogOpen] = useState(false);
+  const [joinReason, setJoinReason] = useState("");
+  const [joinReasonError, setJoinReasonError] = useState("");
   const [joinMessage, setJoinMessage] = useState("");
   const [joinSuccess, setJoinSuccess] = useState(false);
   const [upcomingEvents, setUpcomingEvents] = useState<EventDto[]>([]);
@@ -680,7 +687,7 @@ export function ClubDetailPage() {
     };
   }, [club?.id]);
 
-  const joinClub = async () => {
+  const openJoinDialog = () => {
     if (!club) return;
 
     if (!getAccessToken()) {
@@ -707,12 +714,38 @@ export function ClubDetailPage() {
       return;
     }
 
+    setJoinDialogOpen(true);
+    setJoinReason("");
+    setJoinReasonError("");
+    setJoinMessage("");
+    setJoinSuccess(false);
+  };
+
+  const closeJoinDialog = () => {
+    if (joining) return;
+
+    setJoinDialogOpen(false);
+    setJoinReason("");
+    setJoinReasonError("");
+  };
+
+  const joinClub = async () => {
+    if (!club) return;
+
+    const reason = joinReason.trim();
+
+    if (!reason) {
+      setJoinReasonError("Vui lòng nhập lý do tham gia CLB.");
+      return;
+    }
+
     setJoining(true);
     setJoinMessage("");
     setJoinSuccess(false);
+    setJoinReasonError("");
 
     try {
-      await membershipApi.joinClub(club.id);
+      await membershipApi.joinClub(club.id, reason);
       setCurrentMembership({
         clubId: club.id,
         clubName: club.name,
@@ -724,6 +757,8 @@ export function ClubDetailPage() {
       });
       setJoinSuccess(true);
       setJoinMessage("Đã gửi yêu cầu tham gia. Vui lòng chờ duyệt.");
+      setJoinDialogOpen(false);
+      setJoinReason("");
     } catch (err) {
       setJoinSuccess(false);
       setJoinMessage(
@@ -731,6 +766,44 @@ export function ClubDetailPage() {
       );
     } finally {
       setJoining(false);
+    }
+  };
+
+  const openLeaveDialog = () => {
+    if (!club || currentMembership?.status !== "Approved") return;
+
+    setLeaveDialogOpen(true);
+    setJoinMessage("");
+    setJoinSuccess(false);
+  };
+
+  const closeLeaveDialog = () => {
+    if (leaving) return;
+
+    setLeaveDialogOpen(false);
+  };
+
+  const leaveClub = async () => {
+    if (!club || currentMembership?.status !== "Approved") return;
+
+    setLeaving(true);
+    setJoinMessage("");
+    setJoinSuccess(false);
+
+    try {
+      await membershipApi.leaveClub(club.id);
+      setCurrentMembership({
+        ...currentMembership,
+        status: "Left",
+      });
+      setLeaveDialogOpen(false);
+      setJoinSuccess(true);
+      setJoinMessage(`Bạn đã rời ${club.name}.`);
+    } catch (err) {
+      setJoinSuccess(false);
+      setJoinMessage(err instanceof Error ? err.message : "Không thể rời CLB.");
+    } finally {
+      setLeaving(false);
     }
   };
 
@@ -794,13 +867,34 @@ export function ClubDetailPage() {
               <h1 className="mt-3 text-4xl font-extrabold">{club.name}</h1>
               <p className="mt-2 max-w-3xl text-muted">{club.description}</p>
             </div>
-            <button
-              disabled={joinButtonDisabled}
-              onClick={joinClub}
-              className="btn-primary"
-            >
-              {joinButtonLabel}
-            </button>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              {currentMembership?.status === "Approved" && (
+                <Link to="/my-clubs" className="btn-secondary">
+                  Câu lạc bộ của tôi
+                </Link>
+              )}
+              <button
+                disabled={joinButtonDisabled}
+                onClick={openJoinDialog}
+                className={
+                  currentMembership?.status === "Approved"
+                    ? "btn-secondary opacity-80"
+                    : "btn-primary"
+                }
+              >
+                {joinButtonLabel}
+              </button>
+              {currentMembership?.status === "Approved" && (
+                <button
+                  type="button"
+                  onClick={openLeaveDialog}
+                  disabled={leaving}
+                  className="rounded-2xl border border-red-200 bg-red-50 px-5 py-3 font-bold text-red-600 transition hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {leaving ? "Đang rời..." : "Rời CLB"}
+                </button>
+              )}
+            </div>
           </div>
           {joinMessage && (
             <p
@@ -815,6 +909,81 @@ export function ClubDetailPage() {
           )}
         </div>
       </section>
+      {leaveDialogOpen && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-ink/40 px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-lift">
+            <h2 className="text-xl font-extrabold">Rời {club.name}?</h2>
+            <p className="mt-2 text-sm text-muted">
+              Sau khi rời CLB, bạn sẽ cần gửi yêu cầu tham gia lại nếu muốn quay
+              lại trong tương lai.
+            </p>
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={closeLeaveDialog}
+                disabled={leaving}
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                className="rounded-2xl border border-red-200 bg-red-50 px-5 py-3 font-bold text-red-600 transition hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={leaveClub}
+                disabled={leaving}
+              >
+                {leaving ? "Đang rời..." : "Xác nhận rời CLB"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {joinDialogOpen && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-ink/40 px-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-lift">
+            <h2 className="text-xl font-extrabold">Tham gia {club.name}</h2>
+            <p className="mt-2 text-sm text-muted">
+              Chia sẻ ngắn gọn lý do bạn muốn tham gia để ban điều hành CLB có
+              thêm thông tin khi duyệt yêu cầu.
+            </p>
+            <label className="mt-5 block">
+              <span className="label">Lý do tham gia</span>
+              <textarea
+                className="input h-32 py-3"
+                value={joinReason}
+                onChange={(event) => {
+                  setJoinReason(event.target.value);
+                  setJoinReasonError("");
+                }}
+                placeholder="Ví dụ: Em muốn học hỏi, tham gia hoạt động và đóng góp cho CLB..."
+              />
+            </label>
+            {joinReasonError && (
+              <p className="mt-3 rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+                {joinReasonError}
+              </p>
+            )}
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={closeJoinDialog}
+                disabled={joining}
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={joinClub}
+                disabled={joining}
+              >
+                {joining ? "Đang gửi..." : "Gửi yêu cầu"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="mt-6 grid gap-6 lg:grid-cols-[1.4fr_.8fr]">
         <div className="space-y-6">
           <SectionCard title="Sứ mệnh">
@@ -1082,6 +1251,13 @@ export function EventDetailPage() {
   const [loadingRegistration, setLoadingRegistration] = useState(false);
   const [message, setMessage] = useState("");
   const [success, setSuccess] = useState(false);
+  const [feedbackSummary, setFeedbackSummary] =
+    useState<FeedbackSummary | null>(null);
+  const [feedbackRating, setFeedbackRating] = useState(5);
+  const [feedbackComment, setFeedbackComment] = useState("");
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+  const [feedbackMessage, setFeedbackMessage] = useState("");
+  const [feedbackSuccess, setFeedbackSuccess] = useState(false);
 
   const loadMyRegistration = async (eventId: string) => {
     if (!getAccessToken()) return null;
@@ -1105,7 +1281,9 @@ export function EventDetailPage() {
       setLoadingRegistration(Boolean(getAccessToken()));
       setError("");
       setMessage("");
+      setFeedbackMessage("");
       setMyRegistration(null);
+      setFeedbackSummary(null);
 
       try {
         const data = await eventApi.getEventById(id);
@@ -1119,10 +1297,14 @@ export function EventDetailPage() {
         }
 
         const registration = await loadMyRegistration(data.id);
+        const feedback = getAccessToken()
+          ? await feedbackApi.getEventFeedback(data.id).catch(() => null)
+          : null;
 
         if (!ignore) {
           setEvent(data);
           setMyRegistration(registration);
+          setFeedbackSummary(feedback);
         }
       } catch (err) {
         if (!ignore) {
@@ -1230,6 +1412,36 @@ export function EventDetailPage() {
     }
   };
 
+  const submitFeedback = async () => {
+    if (!event) return;
+
+    setFeedbackSubmitting(true);
+    setFeedbackMessage("");
+    setFeedbackSuccess(false);
+
+    try {
+      await feedbackApi.submitFeedback(event.id, {
+        rating: feedbackRating,
+        comment: feedbackComment.trim() || null,
+      });
+
+      const feedback = await feedbackApi.getEventFeedback(event.id);
+
+      setFeedbackSummary(feedback);
+      setFeedbackComment("");
+      setFeedbackRating(5);
+      setFeedbackSuccess(true);
+      setFeedbackMessage("Đã gửi feedback cho sự kiện.");
+    } catch (err) {
+      setFeedbackSuccess(false);
+      setFeedbackMessage(
+        err instanceof Error ? err.message : "Gửi feedback thất bại.",
+      );
+    } finally {
+      setFeedbackSubmitting(false);
+    }
+  };
+
   if (loading) {
     return (
       <main className="page-shell">
@@ -1261,6 +1473,8 @@ export function EventDetailPage() {
   const canRegister =
     isLoggedIn && acceptsRegistration && !isRegistered && !isFull;
   const canCancel = acceptsRegistration && isRegistered && !isCheckedIn;
+  const canSubmitFeedback =
+    isLoggedIn && isRegistered && isCheckedIn && event.status === "Completed";
   const registerButtonText = loadingRegistration
     ? "Đang kiểm tra..."
     : isFull
@@ -1372,6 +1586,105 @@ export function EventDetailPage() {
               <div>{event.location || "Chưa cập nhật"}</div>
             </div>
           </div>
+        </SectionCard>
+      </div>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-[.9fr_1.1fr]">
+        <SectionCard title="Feedback sự kiện">
+          {feedbackSummary && feedbackSummary.totalCount > 0 ? (
+            <div className="space-y-4">
+              <div className="rounded-xl bg-primary-soft p-4">
+                <div className="text-sm font-semibold text-muted">
+                  Điểm đánh giá trung bình
+                </div>
+                <div className="mt-1 text-3xl font-extrabold text-primary">
+                  {feedbackSummary.averageRating.toFixed(1)}/5
+                </div>
+                <div className="mt-1 text-sm text-muted">
+                  {feedbackSummary.totalCount} lượt feedback
+                </div>
+              </div>
+              {feedbackSummary.items.slice(0, 3).map((feedback) => (
+                <div key={feedback.id} className="rounded-xl border p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="font-bold">{feedback.userFullName}</div>
+                    <div className="text-sm font-bold text-primary">
+                      {feedback.rating}/5
+                    </div>
+                  </div>
+                  {feedback.comment && (
+                    <p className="mt-2 text-sm text-muted">
+                      {feedback.comment}
+                    </p>
+                  )}
+                  <div className="mt-2 text-xs text-muted">
+                    {formatEventDate(feedback.createdAt)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              title="Chưa có feedback"
+              description="Feedback từ người tham gia sẽ xuất hiện sau khi sự kiện kết thúc."
+            />
+          )}
+        </SectionCard>
+
+        <SectionCard title="Gửi feedback">
+          {canSubmitFeedback ? (
+            <div className="space-y-4">
+              <label className="block">
+                <span className="label">Đánh giá</span>
+                <select
+                  className="input"
+                  value={feedbackRating}
+                  onChange={(event) =>
+                    setFeedbackRating(Number(event.target.value))
+                  }
+                >
+                  {[5, 4, 3, 2, 1].map((rating) => (
+                    <option key={rating} value={rating}>
+                      {rating} sao
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="label">Nhận xét</span>
+                <textarea
+                  className="input h-32 py-3"
+                  value={feedbackComment}
+                  onChange={(event) => setFeedbackComment(event.target.value)}
+                  placeholder="Chia sẻ cảm nhận của bạn về sự kiện..."
+                />
+              </label>
+              {feedbackMessage && (
+                <p
+                  className={`rounded-xl px-4 py-3 text-sm font-medium ${
+                    feedbackSuccess
+                      ? "bg-emerald-50 text-emerald-700"
+                      : "bg-red-50 text-red-600"
+                  }`}
+                >
+                  {feedbackMessage}
+                </p>
+              )}
+              <button
+                type="button"
+                className="btn-primary w-full"
+                onClick={submitFeedback}
+                disabled={feedbackSubmitting}
+              >
+                {feedbackSubmitting ? "Đang gửi..." : "Gửi feedback"}
+              </button>
+            </div>
+          ) : (
+            <EmptyState
+              title="Chưa thể gửi feedback"
+              description="Bạn cần đăng ký, check-in và chờ sự kiện hoàn thành để gửi feedback."
+            />
+          )}
         </SectionCard>
       </div>
     </main>
