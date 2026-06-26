@@ -36,7 +36,6 @@ import type {
   ProposalSummary,
   SubmitProposalRequest,
 } from "../types/proposal";
-import { clubs, events, members } from "../data";
 import {
   DataTable,
   EmptyState,
@@ -1348,6 +1347,11 @@ export function MyClubsPage() {
   >("all");
   const [loading, setLoading] = useState(true);
   const [joiningClubId, setJoiningClubId] = useState("");
+  const [leavingClubId, setLeavingClubId] = useState("");
+  const [joinTarget, setJoinTarget] = useState<ClubSummary | null>(null);
+  const [leaveTarget, setLeaveTarget] = useState<ClubSummary | null>(null);
+  const [joinReason, setJoinReason] = useState("");
+  const [joinReasonError, setJoinReasonError] = useState("");
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
@@ -1422,13 +1426,41 @@ export function MyClubsPage() {
     (membership) => membership.status === "Pending",
   ).length;
 
-  const joinClub = async (club: ClubSummary) => {
+  const openJoinDialog = (club: ClubSummary) => {
+    setJoinTarget(club);
+    setJoinReason("");
+    setJoinReasonError("");
+    setError("");
+    setSuccessMessage("");
+  };
+
+  const closeJoinDialog = () => {
+    if (joiningClubId) return;
+
+    setJoinTarget(null);
+    setJoinReason("");
+    setJoinReasonError("");
+  };
+
+  const joinClub = async () => {
+    if (!joinTarget) return;
+
+    const reason = joinReason.trim();
+
+    if (!reason) {
+      setJoinReasonError("Vui lòng nhập lý do tham gia CLB.");
+      return;
+    }
+
+    const club = joinTarget;
+
     setJoiningClubId(club.id);
     setError("");
     setSuccessMessage("");
+    setJoinReasonError("");
 
     try {
-      await membershipApi.joinClub(club.id);
+      await membershipApi.joinClub(club.id, reason);
 
       const nextMembership: MyMembership = {
         clubId: club.id,
@@ -1453,6 +1485,8 @@ export function MyClubsPage() {
         return [...current, nextMembership];
       });
       setSuccessMessage(`Đã gửi yêu cầu tham gia ${club.name}.`);
+      setJoinTarget(null);
+      setJoinReason("");
     } catch (err) {
       setError(
         err instanceof Error
@@ -1461,6 +1495,51 @@ export function MyClubsPage() {
       );
     } finally {
       setJoiningClubId("");
+    }
+  };
+
+  const openLeaveDialog = (club: ClubSummary) => {
+    setLeaveTarget(club);
+    setError("");
+    setSuccessMessage("");
+  };
+
+  const closeLeaveDialog = () => {
+    if (leavingClubId) return;
+
+    setLeaveTarget(null);
+  };
+
+  const leaveClub = async () => {
+    if (!leaveTarget) return;
+
+    const club = leaveTarget;
+
+    setLeavingClubId(club.id);
+    setError("");
+    setSuccessMessage("");
+
+    try {
+      await membershipApi.leaveClub(club.id);
+
+      setMemberships((current) =>
+        current.map((membership) =>
+          membership.clubId === club.id
+            ? {
+                ...membership,
+                status: "Left",
+              }
+            : membership,
+        ),
+      );
+      setSuccessMessage(`Bạn đã rời ${club.name}.`);
+      setLeaveTarget(null);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Không thể rời câu lạc bộ.",
+      );
+    } finally {
+      setLeavingClubId("");
     }
   };
 
@@ -1586,34 +1665,43 @@ export function MyClubsPage() {
                       <span>{membership.roleInClub}</span>
                     )}
                   </div>
-                  <div className="mt-5 grid gap-2 sm:grid-cols-2">
+                  <div className="mt-5 flex flex-col gap-2 sm:flex-row">
                     <Link
                       to={`/my-clubs/${club.id}`}
-                      className="btn-secondary justify-center"
+                      className="btn-secondary flex-1 justify-center"
                     >
                       Chi tiết
                     </Link>
                     {manager ? (
                       <Link
                         to="/club-admin"
-                        className="btn-primary justify-center"
+                        className="btn-primary flex-1 justify-center"
                       >
                         Quản trị
                       </Link>
                     ) : canJoin ? (
                       <button
                         type="button"
-                        onClick={() => joinClub(club)}
+                        onClick={() => openJoinDialog(club)}
                         disabled={joiningClubId === club.id}
-                        className="btn-primary justify-center"
+                        className="btn-primary flex-1 justify-center"
                       >
                         {joiningClubId === club.id ? "Đang gửi..." : "Tham gia"}
+                      </button>
+                    ) : membership?.status === "Approved" ? (
+                      <button
+                        type="button"
+                        onClick={() => openLeaveDialog(club)}
+                        disabled={leavingClubId === club.id}
+                        className="flex flex-1 items-center justify-center rounded-2xl border border-red-200 bg-red-50 px-4 py-3 font-bold text-red-600 transition hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {leavingClubId === club.id ? "Đang rời..." : "Rời CLB"}
                       </button>
                     ) : (
                       <button
                         type="button"
                         disabled
-                        className="btn-secondary justify-center opacity-70"
+                        className="btn-secondary flex-1 justify-center opacity-70"
                       >
                         {membership?.status === "Pending"
                           ? "Đang chờ duyệt"
@@ -1625,6 +1713,83 @@ export function MyClubsPage() {
               </article>
             );
           })}
+        </div>
+      )}
+      {joinTarget && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-ink/40 px-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-lift">
+            <h2 className="text-xl font-extrabold">
+              Tham gia {joinTarget.name}
+            </h2>
+            <p className="mt-2 text-sm text-muted">
+              Chia sẻ ngắn gọn lý do bạn muốn tham gia để ban điều hành CLB có
+              thêm thông tin khi duyệt yêu cầu.
+            </p>
+            <label className="mt-5 block">
+              <span className="label">Lý do tham gia</span>
+              <textarea
+                className="input h-32 py-3"
+                value={joinReason}
+                onChange={(event) => {
+                  setJoinReason(event.target.value);
+                  setJoinReasonError("");
+                }}
+                placeholder="Ví dụ: Em muốn học hỏi, tham gia hoạt động và đóng góp cho CLB..."
+              />
+            </label>
+            {joinReasonError && (
+              <p className="mt-3 rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+                {joinReasonError}
+              </p>
+            )}
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={closeJoinDialog}
+                disabled={Boolean(joiningClubId)}
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={joinClub}
+                disabled={Boolean(joiningClubId)}
+              >
+                {joiningClubId ? "Đang gửi..." : "Gửi yêu cầu"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {leaveTarget && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-ink/40 px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-lift">
+            <h2 className="text-xl font-extrabold">Rời {leaveTarget.name}?</h2>
+            <p className="mt-2 text-sm text-muted">
+              Sau khi rời CLB, bạn sẽ cần gửi yêu cầu tham gia lại nếu muốn quay
+              lại trong tương lai.
+            </p>
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={closeLeaveDialog}
+                disabled={Boolean(leavingClubId)}
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                className="btn-ghost text-red-600"
+                onClick={leaveClub}
+                disabled={Boolean(leavingClubId)}
+              >
+                {leavingClubId ? "Đang rời..." : "Xác nhận rời CLB"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </main>
