@@ -13,7 +13,7 @@ import type {
 
 export const authApi = {
   login(payload: LoginRequest) {
-    return apiRequest<LoginResponse>("/api/auth/login", {
+    return apiRequest<LoginResponse>("/login", {
       method: "POST",
       body: JSON.stringify(payload),
       auth: false,
@@ -21,7 +21,7 @@ export const authApi = {
   },
 
   register(payload: RegisterRequest) {
-    return apiRequest<LoginResponse>("/api/auth/register", {
+    return apiRequest<LoginResponse>("/register", {
       method: "POST",
       body: JSON.stringify(payload),
       auth: false,
@@ -29,7 +29,7 @@ export const authApi = {
   },
 
   refreshToken(payload: RefreshTokenRequest) {
-    return apiRequest<LoginResponse>("/api/auth/refresh-token", {
+    return apiRequest<LoginResponse>("/refresh-token", {
       method: "POST",
       body: JSON.stringify(payload),
       auth: false,
@@ -37,13 +37,13 @@ export const authApi = {
   },
 
   logout() {
-    return apiRequest<unknown>("/api/auth/logout", {
+    return apiRequest<unknown>("/logout", {
       method: "POST",
     });
   },
 
   forgotPassword(payload: ForgotPasswordRequest) {
-    return apiRequest<unknown>("/api/auth/forgot-password", {
+    return apiRequest<unknown>("/forgot-password", {
       method: "POST",
       body: JSON.stringify(payload),
       auth: false,
@@ -51,7 +51,7 @@ export const authApi = {
   },
 
   resetPassword(payload: ResetPasswordRequest) {
-    return apiRequest<unknown>("/api/auth/reset-password", {
+    return apiRequest<unknown>("/reset-password", {
       method: "POST",
       body: JSON.stringify(payload),
       auth: false,
@@ -59,18 +59,18 @@ export const authApi = {
   },
 
   changePassword(payload: ChangePasswordRequest) {
-    return apiRequest<unknown>("/api/auth/change-password", {
+    return apiRequest<unknown>("/change-password", {
       method: "PUT",
       body: JSON.stringify(payload),
     });
   },
 
   getMe() {
-    return apiRequest<UserProfile>("/api/auth/me");
+    return apiRequest<UserProfile>("/me");
   },
 
   updateMe(payload: UpdateProfileRequest) {
-    return apiRequest<UserProfile>("/api/auth/me", {
+    return apiRequest<UserProfile>("/me", {
       method: "PUT",
       body: JSON.stringify(payload),
     });

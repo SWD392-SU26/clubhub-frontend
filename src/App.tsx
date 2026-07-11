@@ -38,6 +38,19 @@ import {
   StudentDashboard,
 } from "./pages/StudentPages";
 import {
+  OfficialClubCreatePage,
+  PlatformStatisticsPage,
+  ProposalReviewPage,
+  SystemAdminDashboard,
+  SystemAuditLogPage,
+  SystemClubDetailPage,
+  SystemClubsPage,
+  SystemProposalsPage,
+  SystemSettingsPage,
+  UserSecurityDetailPage,
+  UsersManagementPage,
+} from "./pages/AdminPages";
+import {
   CancelEventPage,
   CheckInPage,
   ClubAdminDashboard,
@@ -52,20 +65,9 @@ import {
   FeedbackManagementPage,
   MemberDetailPage,
   MembersPage,
-  OfficialClubCreatePage,
-  PlatformStatisticsPage,
   PointsManagementPage,
-  ProposalReviewPage,
-  SystemAdminDashboard,
-  SystemAuditLogPage,
-  SystemClubDetailPage,
-  SystemClubsPage,
-  SystemProposalsPage,
-  SystemSettingsPage,
   TransferOwnershipPage,
-  UserSecurityDetailPage,
-  UsersManagementPage,
-} from "./pages/AdminPages";
+} from "./pages/ClubAdminPages";
 export default function App() {
   return (
     <AuthBootstrap>
@@ -158,7 +160,7 @@ export default function App() {
             />
             <Route path="/club-admin/events/new" element={<CreateEventPage />} />
             <Route
-              path="/club-admin/events/cancel"
+              path="/club-admin/events/:id/cancel"
               element={<CancelEventPage />}
             />
             <Route

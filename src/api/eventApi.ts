@@ -1,7 +1,7 @@
 import { apiRequest } from "./http";
 import { clubApi } from "./clubApi";
 import type { PagedResult } from "../types/common";
-import type { EventDto, EventRegistration } from "../types/event";
+import type { CreateEventRequest, EventDto, EventRegistration, UpdateEventRequest } from "../types/event";
 
 function toQuery(params: Record<string, string | number | undefined>) {
   const searchParams = new URLSearchParams();
@@ -75,5 +75,33 @@ export const eventApi = {
     return apiRequest<boolean>(`/api/events/${eventId}/register`, {
       method: "DELETE",
     });
+  },
+
+  create(clubId: string, payload: CreateEventRequest) {
+    return apiRequest<EventDto>(`/api/clubs/${clubId}/events`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  update(eventId: string, payload: UpdateEventRequest) {
+    return apiRequest<EventDto>(`/api/events/${eventId}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  cancel(eventId: string) {
+    return apiRequest<boolean>(`/api/events/${eventId}`, { method: "DELETE" });
+  },
+
+  getRegistrations(eventId: string, page = 1, pageSize = 100) {
+    return apiRequest<PagedResult<EventRegistration>>(
+      `/api/events/${eventId}/registrations${toQuery({ page, pageSize })}`,
+    );
+  },
+
+  checkIn(eventId: string, userId: string) {
+    return apiRequest<boolean>(`/api/events/${eventId}/checkin/${userId}`, { method: "POST" });
   },
 };

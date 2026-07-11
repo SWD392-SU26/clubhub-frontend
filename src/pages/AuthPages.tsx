@@ -65,10 +65,10 @@ function Field({
         )}
       </span>
       {error && (
-      <p className="mt-2 text-sm font-medium text-red-600">
-        {error}
-      </p>
-    )}
+        <p className="mt-2 text-sm font-medium text-red-600">
+          {error}
+        </p>
+      )}
     </label>
   );
 }
@@ -77,8 +77,8 @@ export function LoginPage({ compact = false }: { compact?: boolean }) {
   const location = useLocation();
   const locationMessage =
     location.state &&
-    typeof location.state === "object" &&
-    "message" in location.state
+      typeof location.state === "object" &&
+      "message" in location.state
       ? String((location.state as { message?: string }).message ?? "")
       : "";
   const locationMessageIsSuccess = locationMessage.includes("thành công");
@@ -86,79 +86,77 @@ export function LoginPage({ compact = false }: { compact?: boolean }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [fieldErrors, setFieldErrors] = useState<{
-  username?: string;
-  password?: string;
-}>({});
-const [formError, setFormError] = useState("");
-  const submit = async (e: FormEvent) => {
-  e.preventDefault();
-
-  const trimmedUsername = username.trim();
-  const nextErrors: {
     username?: string;
     password?: string;
-  } = {};
+  }>({});
+  const [formError, setFormError] = useState("");
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
 
-  if (!trimmedUsername) {
-    nextErrors.username = "Vui lòng nhập username.";
-  }
+    const trimmedUsername = username.trim();
+    const nextErrors: {
+      username?: string;
+      password?: string;
+    } = {};
 
-  if (!password) {
-    nextErrors.password = "Vui lòng nhập mật khẩu.";
-  }
+    if (!trimmedUsername) {
+      nextErrors.username = "Vui lòng nhập username.";
+    }
 
-  if (Object.keys(nextErrors).length > 0) {
-    setFieldErrors(nextErrors);
+    if (!password) {
+      nextErrors.password = "Vui lòng nhập mật khẩu.";
+    }
+
+    if (Object.keys(nextErrors).length > 0) {
+      setFieldErrors(nextErrors);
+      setFormError("");
+      return;
+    }
+
+    setFieldErrors({});
     setFormError("");
-    return;
-  }
+    setLoading(true);
 
-  setFieldErrors({});
-  setFormError("");
-  setLoading(true);
+    try {
+      const data = await authApi.login({
+        emailOrUsername: trimmedUsername,
+        password,
+      });
 
-  try {
-    const data = await authApi.login({
-      emailOrUsername: trimmedUsername,
-      password,
-    });
+      setAuthSession(data);
 
-    setAuthSession(data);
-
-    const requestedPath =
-      location.state &&
-      typeof location.state === "object" &&
-      "from" in location.state
-        ? String((location.state as { from?: string }).from ?? "")
-        : "";
-    const isUniversityAdmin = data.profile.systemRole === "UniversityAdmin";
-    const memberships = isUniversityAdmin
-      ? []
-      : await membershipApi.getMyMemberships().catch(() => []);
-    const hasClubAdminAccess = hasClubAdminPermission(memberships);
-    const defaultPath = isUniversityAdmin
-      ? "/system-admin"
-      : hasClubAdminAccess
-        ? "/club-admin"
-        : "/dashboard";
-    const canUseRequestedPath =
-      requestedPath.startsWith("/") &&
-      !requestedPath.startsWith("/login") &&
-      (isUniversityAdmin
-        ? requestedPath.startsWith("/system-admin")
-        : requestedPath.startsWith("/club-admin")
+      const requestedPath =
+        location.state &&
+          typeof location.state === "object" &&
+          "from" in location.state
+          ? String((location.state as { from?: string }).from ?? "")
+          : "";
+      const isUniversityAdmin = data.profile.systemRole === "UniversityAdmin";
+      const memberships = await membershipApi.getMyMemberships().catch(() => []);
+      const hasClubAdminAccess = hasClubAdminPermission(memberships);
+      const defaultPath = isUniversityAdmin
+        ? "/system-admin"
+        : hasClubAdminAccess
+          ? "/club-admin"
+          : "/dashboard";
+      const canUseRequestedPath =
+        requestedPath.startsWith("/") &&
+        !requestedPath.startsWith("/login") &&
+        (requestedPath.startsWith("/club-admin")
           ? hasClubAdminAccess
-          : !requestedPath.startsWith("/system-admin"));
+          : requestedPath.startsWith("/system-admin")
+            ? isUniversityAdmin
+            : !isUniversityAdmin);
 
-    navigate(canUseRequestedPath ? requestedPath : defaultPath, {
-      replace: true,
-    });
-  } catch (err) {
-    setFormError(err instanceof Error ? err.message : "Đăng nhập thất bại.");
-  } finally {
-    setLoading(false);
-  }
-};
+      navigate(canUseRequestedPath ? requestedPath : defaultPath, {
+        replace: true,
+      });
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Đăng nhập thất bại.");
+    } finally {
+      setLoading(false);
+    }
+  };
   const form = (
     <div className="w-full">
       <div className="mb-8 text-center lg:text-left">
@@ -166,7 +164,7 @@ const [formError, setFormError] = useState("");
           <Brand />
         </div>
         <h1 className="mt-6 text-3xl font-extrabold">
-          Chào mừng bạn trở lại 
+          Chào mừng bạn trở lại
         </h1>
         <p className="mt-2 text-muted">
           Đăng nhập để tiếp tục hành trình cùng cộng đồng CLB.
@@ -181,9 +179,9 @@ const [formError, setFormError] = useState("");
           onChange={(value) => {
             setUsername(value);
             setFieldErrors((prev) => ({ ...prev, username: undefined }));
-        }}
-        error={fieldErrors.username}
-/>
+          }}
+          error={fieldErrors.username}
+        />
         <Field
           label="Mật khẩu"
           type="password"
@@ -195,14 +193,13 @@ const [formError, setFormError] = useState("");
             setFieldErrors((prev) => ({ ...prev, password: undefined }));
           }}
           error={fieldErrors.password}
-        />      
+        />
         {locationMessage && (
           <p
-            className={`rounded-xl px-4 py-3 text-sm font-medium ${
-              locationMessageIsSuccess
+            className={`rounded-xl px-4 py-3 text-sm font-medium ${locationMessageIsSuccess
                 ? "bg-emerald-50 text-emerald-700"
                 : "bg-primary-soft text-primary-dark"
-            }`}
+              }`}
           >
             {locationMessage}
           </p>
@@ -336,7 +333,7 @@ export function RegisterPage() {
         phone: normalizedPhone || undefined,
       });
 
-      navigate("/login", { 
+      navigate("/login", {
         replace: true,
         state: { message: "Đăng ký thành công! Vui lòng đăng nhập." },
       });
@@ -372,11 +369,11 @@ export function RegisterPage() {
             icon={UserRound}
             value={username}
             onChange={(value) => {
-            setUsername(value);
-            setFieldErrors((prev) => ({ ...prev, username: undefined }));
-          }}
-          error={fieldErrors.username}
-/>
+              setUsername(value);
+              setFieldErrors((prev) => ({ ...prev, username: undefined }));
+            }}
+            error={fieldErrors.username}
+          />
           <div className="grid gap-5 sm:grid-cols-2">
             <Field
               label="Mã số sinh viên"
@@ -443,23 +440,23 @@ export function RegisterPage() {
               type="checkbox"
               checked={agreeTerms}
               onChange={(e) => {
-              setAgreeTerms(e.target.checked);
-              setFieldErrors((prev) => ({ ...prev, agreeTerms: undefined }));
-          }}
-          className="mt-1 rounded text-primary focus:ring-primary"
-        />
-        Tôi đồng ý với Điều khoản sử dụng và Chính sách bảo mật.
-      </label>
-      {fieldErrors.agreeTerms && (
-        <p className="-mt-3 text-sm font-medium text-red-600">
-        {fieldErrors.agreeTerms}
-        </p>
-      )}
-      {formError && (
-        <p className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
-      {formError}
-        </p>
-      )}
+                setAgreeTerms(e.target.checked);
+                setFieldErrors((prev) => ({ ...prev, agreeTerms: undefined }));
+              }}
+              className="mt-1 rounded text-primary focus:ring-primary"
+            />
+            Tôi đồng ý với Điều khoản sử dụng và Chính sách bảo mật.
+          </label>
+          {fieldErrors.agreeTerms && (
+            <p className="-mt-3 text-sm font-medium text-red-600">
+              {fieldErrors.agreeTerms}
+            </p>
+          )}
+          {formError && (
+            <p className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+              {formError}
+            </p>
+          )}
           <button disabled={loading} className="btn-primary">
             {loading ? "Đang đăng ký..." : "Đăng ký tài khoản"}
           </button>

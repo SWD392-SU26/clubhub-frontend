@@ -28,7 +28,7 @@ async function refreshSession() {
   }
 
   if (!refreshPromise) {
-    refreshPromise = fetch(`${API_BASE_URL}/api/auth/refresh-token`, {
+    refreshPromise = fetch(`${API_BASE_URL}/refresh-token`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
