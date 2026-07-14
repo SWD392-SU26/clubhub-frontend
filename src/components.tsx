@@ -35,6 +35,7 @@ import { useEffect, useState } from "react";
 import { authApi } from "./api/authApi";
 import { clearAuthSession, getProfile } from "./api/authStorage";
 import { membershipApi } from "./api/membershipApi";
+import { notificationApi } from "./api/notificationApi";
 import { getPrimaryAdminMembership } from "./clubPermissions";
 export const images = {
   campus:
@@ -476,6 +477,36 @@ const studentNav = [
 ] as const;
 export function StudentLayout() {
   const [open, setOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadUnreadCount() {
+      try {
+        const result = await notificationApi.getUnreadCount();
+        if (!ignore) {
+          setUnreadCount(result.count);
+        }
+      } catch {
+        if (!ignore) {
+          setUnreadCount(0);
+        }
+      }
+    }
+
+    loadUnreadCount();
+    window.addEventListener("clubhub_notifications_updated", loadUnreadCount);
+
+    return () => {
+      ignore = true;
+      window.removeEventListener(
+        "clubhub_notifications_updated",
+        loadUnreadCount,
+      );
+    };
+  }, []);
+
   return (
     <div className="flex min-h-screen flex-col">
       <header className="sticky top-0 z-40 border-b bg-white/95 backdrop-blur">
@@ -504,8 +535,17 @@ export function StudentLayout() {
               placeholder="Tìm kiếm CLB, sự kiện..."
             />
           </div>
-          <Link to="/notifications" className="btn-ghost">
+          <Link
+            to="/notifications"
+            className="btn-ghost relative"
+            aria-label="Thông báo"
+          >
             <Bell className="h-5 w-5" />
+            {unreadCount > 0 && (
+              <span className="absolute -right-1 -top-1 grid min-h-5 min-w-5 place-items-center rounded-full bg-primary px-1.5 text-[11px] font-bold text-white">
+                {unreadCount > 99 ? "99+" : unreadCount}
+              </span>
+            )}
           </Link>
           <UserProfileMenu
             name="Minh Hiếu"

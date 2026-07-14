@@ -13,12 +13,35 @@ type ApiResponse<T> = {
   data?: T;
 };
 
+type ValidationProblemResponse = {
+  title?: string;
+  errors?: Record<string, string[]>;
+};
+
 type RequestOptions = RequestInit & {
   auth?: boolean;
   retry?: boolean;
 };
 
 let refreshPromise: Promise<LoginResponse> | null = null;
+
+function getErrorMessage(
+  json: (ApiResponse<unknown> & ValidationProblemResponse) | null,
+  fallback: string,
+) {
+  if (json?.errors) {
+    const messages = Object.values(json.errors).reduce<string[]>(
+      (items, fieldMessages) => items.concat(fieldMessages),
+      [],
+    );
+
+    if (messages.length > 0) {
+      return messages[0];
+    }
+  }
+
+  return json?.message ?? json?.title ?? fallback;
+}
 
 async function refreshSession() {
   const refreshToken = getRefreshToken();
@@ -28,7 +51,7 @@ async function refreshSession() {
   }
 
   if (!refreshPromise) {
-    refreshPromise = fetch(`${API_BASE_URL}/api/auth/refresh-token`, {
+    refreshPromise = fetch(`${API_BASE_URL}/refresh-token`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -42,8 +65,10 @@ async function refreshSession() {
 
         if (!response.ok || json?.success === false || !json?.data) {
           throw new Error(
-            json?.message ??
+            getErrorMessage(
+              json,
               "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
+            ),
           );
         }
 
@@ -108,10 +133,10 @@ export async function apiRequest<T>(
 
   const json = (await response
     .json()
-    .catch(() => null)) as ApiResponse<T> | null;
+    .catch(() => null)) as (ApiResponse<T> & ValidationProblemResponse) | null;
 
   if (!response.ok || json?.success === false) {
-    throw new Error(json?.message ?? "Có lỗi xảy ra khi gọi API.");
+    throw new Error(getErrorMessage(json, "Có lỗi xảy ra khi gọi API."));
   }
 
   return json?.data as T;

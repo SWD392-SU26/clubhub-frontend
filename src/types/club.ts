@@ -1,6 +1,11 @@
 export type ClubRole = "Member" | "VicePresident" | "President" | "ClubAdmin";
 
-export type MembershipStatus = "Pending" | "Approved" | "Rejected" | "Left";
+export type MembershipStatus =
+  | "Pending"
+  | "Approved"
+  | "Rejected"
+  | "Cancelled"
+  | "Left";
 
 export type ClubCategory =
   | "Academic"

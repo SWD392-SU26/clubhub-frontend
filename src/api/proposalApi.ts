@@ -13,6 +13,13 @@ export const proposalApi = {
     });
   },
 
+  resubmitProposal(id: string, payload: SubmitProposalRequest) {
+    return apiRequest<ProposalSummary>(`/api/proposals/${id}/resubmit`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  },
+
   getMyProposals() {
     return apiRequest<ProposalSummary[]>("/api/proposals/my");
   },
