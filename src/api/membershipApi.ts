@@ -51,10 +51,4 @@ export const membershipApi = {
     return apiRequest<boolean>(`/api/clubs/${clubId}/members/${userId}`, { method: "DELETE" });
   },
 
-  transferAdmin(clubId: string, newAdminUserId: string) {
-    return apiRequest<boolean>(`/api/clubs/${clubId}/members/transfer-admin`, {
-      method: "PUT",
-      body: JSON.stringify({ newAdminUserId }),
-    });
-  },
 };

@@ -54,19 +54,14 @@ import {
   CancelEventPage,
   CheckInPage,
   ClubAdminDashboard,
-  ClubAuditLogPage,
   ClubJoinRequestsAdminPage,
-  ClubSettingsPage,
-  ClubStatisticsPage,
-  ClubStatusPage,
   CreateEventPage,
+  EditEventPage,
   EventAdminDetailPage,
   EventsManagementPage,
   FeedbackManagementPage,
   MemberDetailPage,
   MembersPage,
-  PointsManagementPage,
-  TransferOwnershipPage,
 } from "./pages/ClubAdminPages";
 export default function App() {
   return (
@@ -160,6 +155,10 @@ export default function App() {
             />
             <Route path="/club-admin/events/new" element={<CreateEventPage />} />
             <Route
+              path="/club-admin/events/:id/edit"
+              element={<EditEventPage />}
+            />
+            <Route
               path="/club-admin/events/:id/cancel"
               element={<CancelEventPage />}
             />
@@ -172,21 +171,6 @@ export default function App() {
               path="/club-admin/feedback"
               element={<FeedbackManagementPage />}
             />
-            <Route
-              path="/club-admin/points"
-              element={<PointsManagementPage />}
-            />
-            <Route
-              path="/club-admin/statistics"
-              element={<ClubStatisticsPage />}
-            />
-            <Route path="/club-admin/audit-log" element={<ClubAuditLogPage />} />
-            <Route path="/club-admin/settings" element={<ClubSettingsPage />} />
-            <Route
-              path="/club-admin/transfer"
-              element={<TransferOwnershipPage />}
-            />
-            <Route path="/club-admin/status" element={<ClubStatusPage />} />
           </Route>
         </Route>
         <Route element={<RequireUniversityAdmin />}>

@@ -557,10 +557,6 @@ const clubAdminNav: NavItem[] = [
   ["/club-admin/events", "Sự kiện", CalendarDays],
   ["/club-admin/check-in", "Check-in", ScanLine],
   ["/club-admin/feedback", "Feedback", MessageSquare],
-  ["/club-admin/points", "Điểm", Trophy],
-  ["/club-admin/statistics", "Thống kê", BarChart3],
-  ["/club-admin/audit-log", "Nhật ký", History],
-  ["/club-admin/settings", "Cài đặt", Settings],
 ];
 const systemAdminNav: NavItem[] = [
   ["/system-admin", "Dashboard", LayoutDashboard],

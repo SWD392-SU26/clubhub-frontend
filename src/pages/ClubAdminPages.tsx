@@ -1,9 +1,8 @@
 import {
-  BarChart3,
   CalendarDays,
   CheckCircle2,
-  Eye,
   MessageSquare,
+  Pencil,
   PlusCircle,
   QrCode,
   Star,
@@ -42,6 +41,14 @@ const dateTime = (value?: string | null) =>
       timeStyle: "short",
     }).format(new Date(value))
     : "—";
+
+const toDateTimeLocalValue = (value?: string | null) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const timezoneOffset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - timezoneOffset).toISOString().slice(0, 16);
+};
 
 function ErrorNotice({ message }: { message: string }) {
   return (
@@ -182,7 +189,7 @@ export function ClubAdminDashboard() {
             <Link className="btn-secondary" to="/club-admin/join-requests">Duyệt yêu cầu</Link>
             <Link className="btn-secondary" to="/club-admin/events/new">Tạo sự kiện</Link>
             <Link className="btn-secondary" to="/club-admin/check-in">Check-in</Link>
-            <Link className="btn-secondary" to="/club-admin/settings">Cài đặt CLB</Link>
+            <Link className="btn-secondary" to="/club-admin/feedback">Xem feedback</Link>
           </div>
         </SectionCard>
       </div>
@@ -261,7 +268,7 @@ export function MemberDetailPage() {
           <p className="text-muted">Vai trò: {member.roleInClub}</p><p className="mt-2 text-muted">Ngày tham gia: {dateTime(member.joinedAt)}</p><p className="mt-2 text-muted">Tổng điểm: {points?.totalPoints ?? 0}</p><p className="mt-2 text-muted">Xếp hạng: {points?.rank ?? "—"}</p>
           {member.roleInClub !== "President" && <button onClick={() => void remove()} className="btn-ghost mt-5 text-red-600">Xóa khỏi CLB</button>}
         </SectionCard>
-        <SectionCard title="Quản trị"><Link to="/club-admin/transfer" className="btn-secondary">Chuyển quyền chủ nhiệm</Link><p className="mt-4 text-sm text-muted">Lịch sử tham gia sự kiện theo từng thành viên chưa được backend cung cấp.</p></SectionCard>
+        <SectionCard title="Theo dõi tham gia"><p className="text-sm text-muted">Trang này phục vụ chức năng quản lý thành viên trong design. Lịch sử tham gia sự kiện chi tiết theo từng thành viên cần backend cung cấp thêm endpoint riêng.</p></SectionCard>
       </div>
     )}
   </main>;
@@ -318,7 +325,7 @@ export function EventAdminDetailPage() {
       .catch((err) => setError(err instanceof Error ? err.message : "Không thể tải sự kiện."));
   }, [id]);
   return <main className="page-shell">
-    <PageTitle title={event?.name ?? "Chi tiết sự kiện"} description={event ? `${dateTime(event.startTime)} · ${event.location ?? "Chưa có địa điểm"}` : ""} actions={event && <><Link to="/club-admin/check-in" className="btn-secondary"><QrCode className="h-4 w-4" />Check-in</Link><Link to={`/club-admin/events/${event.id}/cancel`} className="btn-ghost text-red-600"><XCircle className="h-4 w-4" />Hủy sự kiện</Link></>} />
+    <PageTitle title={event?.name ?? "Chi tiết sự kiện"} description={event ? `${dateTime(event.startTime)} · ${event.location ?? "Chưa có địa điểm"}` : ""} actions={event && <><Link to={`/club-admin/events/${event.id}/edit`} className="btn-secondary"><Pencil className="h-4 w-4" />Sửa sự kiện</Link><Link to="/club-admin/check-in" className="btn-secondary"><QrCode className="h-4 w-4" />Check-in</Link><Link to={`/club-admin/events/${event.id}/cancel`} className="btn-ghost text-red-600"><XCircle className="h-4 w-4" />Hủy sự kiện</Link></>} />
     {error && <ErrorNotice message={error} />}
     {!event ? <LoadingState /> : <><div className="grid gap-4 sm:grid-cols-3"><StatCard label="Đã đăng ký" value={`${event.registeredCount}/${event.capacity ?? "∞"}`} icon={Users} /><StatCard label="Đã check-in" value={String(registrations.filter((r) => r.isCheckedIn).length)} icon={CheckCircle2} tone="green" /><StatCard label="Đánh giá" value={feedback ? `${feedback.averageRating}/5` : "—"} icon={Star} tone="blue" /></div><SectionCard title="Danh sách đăng ký" className="mt-6"><DataTable columns={["Mã đăng ký", "Ngày đăng ký", "Trạng thái", "Thời gian check-in"]} rows={registrations.map((r) => [r.id.slice(0, 8), dateTime(r.registeredAt), <StatusBadge status={r.isCheckedIn ? "CHECKED IN" : "REGISTERED"} />, dateTime(r.checkInTime)])} /></SectionCard></>}
   </main>;
@@ -339,6 +346,40 @@ export function CreateEventPage() {
     } catch (err) { setError(err instanceof Error ? err.message : "Không thể tạo sự kiện."); setSaving(false); }
   }
   return <main className="page-shell max-w-5xl"><PageTitle title="Tạo sự kiện mới" description={admin.club?.name} />{(admin.error || error) && <ErrorNotice message={admin.error || error} />}<form onSubmit={submit} className="card grid gap-5 p-6 sm:grid-cols-2"><label className="sm:col-span-2"><span className="label">Tên sự kiện *</span><input name="name" className="input" required maxLength={200} /></label><label><span className="label">Bắt đầu *</span><input name="startTime" className="input" type="datetime-local" required /></label><label><span className="label">Kết thúc *</span><input name="endTime" className="input" type="datetime-local" required /></label><label><span className="label">Địa điểm</span><input name="location" className="input" /></label><label><span className="label">Sức chứa</span><input name="capacity" className="input" type="number" min="1" /></label><label className="sm:col-span-2"><span className="label">Mô tả</span><textarea name="description" className="input h-40 py-3" /></label><div className="sm:col-span-2 flex justify-end gap-2"><Link to="/club-admin/events" className="btn-secondary">Hủy</Link><button disabled={saving || !admin.clubId} className="btn-primary">{saving ? "Đang tạo..." : "Đăng sự kiện"}</button></div></form></main>;
+}
+
+export function EditEventPage() {
+  const { id = "" } = useParams();
+  const navigate = useNavigate();
+  const [event, setEvent] = useState<EventDto | null>(null);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    eventApi.getEventById(id).then(setEvent).catch((err) => setError(err instanceof Error ? err.message : "Không thể tải sự kiện."));
+  }, [id]);
+
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+    setSaving(true);
+    try {
+      const updated = await eventApi.update(id, {
+        name: String(form.get("name")),
+        description: String(form.get("description")),
+        location: String(form.get("location")),
+        startTime: new Date(String(form.get("startTime"))).toISOString(),
+        endTime: new Date(String(form.get("endTime"))).toISOString(),
+        capacity: Number(form.get("capacity")) || undefined,
+      });
+      navigate(`/club-admin/events/${updated.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Không thể cập nhật sự kiện.");
+      setSaving(false);
+    }
+  }
+
+  return <main className="page-shell max-w-5xl"><PageTitle title="Sửa sự kiện" description={event?.name ?? ""} />{error && <ErrorNotice message={error} />}{!event ? <LoadingState /> : <form onSubmit={submit} className="card grid gap-5 p-6 sm:grid-cols-2"><label className="sm:col-span-2"><span className="label">Tên sự kiện *</span><input name="name" className="input" required maxLength={200} defaultValue={event.name} /></label><label><span className="label">Bắt đầu *</span><input name="startTime" className="input" type="datetime-local" required defaultValue={toDateTimeLocalValue(event.startTime)} /></label><label><span className="label">Kết thúc *</span><input name="endTime" className="input" type="datetime-local" required defaultValue={toDateTimeLocalValue(event.endTime)} /></label><label><span className="label">Địa điểm</span><input name="location" className="input" defaultValue={event.location ?? ""} /></label><label><span className="label">Sức chứa</span><input name="capacity" className="input" type="number" min="1" defaultValue={event.capacity ?? ""} /></label><label className="sm:col-span-2"><span className="label">Mô tả</span><textarea name="description" className="input h-40 py-3" defaultValue={event.description ?? ""} /></label><div className="sm:col-span-2 flex justify-end gap-2"><Link to={`/club-admin/events/${event.id}`} className="btn-secondary">Hủy</Link><button disabled={saving} className="btn-primary">{saving ? "Đang lưu..." : "Lưu thay đổi"}</button></div></form>}</main>;
 }
 
 export function CancelEventPage() {
@@ -371,46 +412,4 @@ export function FeedbackManagementPage() {
   const all = Object.entries(summaries).flatMap(([eventId, summary]) => summary.items.map((item) => ({ ...item, eventId })));
   const average = all.length ? all.reduce((sum, x) => sum + x.rating, 0) / all.length : 0;
   return <main className="page-shell"><PageTitle title="Phân tích phản hồi" description="Rating và nhận xét sau sự kiện." /><div className="grid gap-4 sm:grid-cols-2"><StatCard label="Đánh giá trung bình" value={`${average.toFixed(1)}/5`} icon={Star} /><StatCard label="Tổng feedback" value={String(all.length)} icon={MessageSquare} tone="blue" /></div><SectionCard title="Danh sách phản hồi" className="mt-6">{all.length ? <DataTable columns={["Sự kiện", "Người gửi", "Rating", "Nhận xét", "Ngày gửi"]} rows={all.map((f) => [events.events.find((e) => e.id === f.eventId)?.name ?? "—", f.userFullName, `${f.rating}/5`, f.comment ?? "—", dateTime(f.createdAt)])} /> : <EmptyState title="Chưa có phản hồi" description="Feedback của các sự kiện sẽ xuất hiện tại đây." />}</SectionCard></main>;
-}
-
-export function PointsManagementPage() {
-  const admin = useAdminClub();
-  const [points, setPoints] = useState<MemberPoint[]>([]);
-  const [error, setError] = useState("");
-  useEffect(() => { if (admin.clubId) pointApi.getLeaderboard(admin.clubId, 1, 100).then((x) => setPoints(x.items)).catch((e) => setError(e.message)); }, [admin.clubId]);
-  return <main className="page-shell"><PageTitle title="Điểm thành viên" description="Bảng xếp hạng điểm thi đua của CLB." />{error && <ErrorNotice message={error} />}<SectionCard title="Bảng xếp hạng"><DataTable columns={["Hạng", "Thành viên", "Tổng điểm"]} rows={points.map((p) => [p.rank, p.fullName, p.totalPoints])} /></SectionCard><div className="mt-5 rounded-xl bg-amber-50 p-4 text-sm text-amber-800">Backend chưa có API cộng/trừ điểm thủ công. Điểm hiện được tự động ghi nhận khi check-in và gửi feedback.</div></main>;
-}
-
-export function ClubStatisticsPage() {
-  const admin = useAdminClub();
-  const members = useClubMembers(admin.clubId);
-  const events = useClubEvents(admin.clubId);
-  const totalRegistrations = events.events.reduce((sum, e) => sum + e.registeredCount, 0);
-  return <main className="page-shell"><PageTitle title={`Thống kê: ${admin.club?.name ?? "CLB"}`} /><div className="grid gap-4 sm:grid-cols-3"><StatCard label="Thành viên" value={String(members.members.length)} icon={Users} /><StatCard label="Sự kiện" value={String(events.events.length)} icon={CalendarDays} tone="blue" /><StatCard label="Lượt đăng ký" value={String(totalRegistrations)} icon={BarChart3} tone="green" /></div><SectionCard title="Tỷ lệ đăng ký theo sự kiện" className="mt-6"><div className="space-y-4">{events.events.map((e) => <div key={e.id}><div className="mb-1 flex justify-between text-sm"><span className="font-semibold">{e.name}</span><span>{e.registeredCount}/{e.capacity ?? "∞"}</span></div><div className="h-3 rounded-full bg-slate-100"><div className="h-3 rounded-full bg-primary" style={{ width: `${e.capacity ? Math.min(100, e.registeredCount / e.capacity * 100) : 0}%` }} /></div></div>)}</div></SectionCard></main>;
-}
-
-export function ClubAuditLogPage() {
-  return <main className="page-shell"><PageTitle title="Nhật ký hoạt động CLB" /><EmptyState title="Backend chưa hỗ trợ nhật ký" description="Cần bổ sung Audit Log API trước khi màn hình này có thể hiển thị dữ liệu thật." /></main>;
-}
-
-export function ClubSettingsPage() {
-  const admin = useAdminClub();
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
-  async function save(e: FormEvent<HTMLFormElement>) { e.preventDefault(); const form = new FormData(e.currentTarget); try { const updated = await clubApi.updateClub(admin.clubId, { name: String(form.get("name")), description: String(form.get("description")), logoUrl: String(form.get("logoUrl")), coverImageUrl: String(form.get("coverImageUrl")) }); admin.setClub(updated); setMessage("Đã lưu thông tin CLB."); setError(""); } catch (err) { setError(err instanceof Error ? err.message : "Không thể lưu thay đổi."); } }
-  return <main className="page-shell max-w-5xl"><PageTitle title="Cài đặt CLB" description="Cập nhật thông tin và nhận diện công khai." />{error && <ErrorNotice message={error} />}{message && <SuccessNotice message={message} />}{admin.loading ? <LoadingState /> : admin.club && <form onSubmit={save} className="card grid gap-5 p-6 sm:grid-cols-2"><label><span className="label">Tên CLB *</span><input name="name" className="input" defaultValue={admin.club.name} required /></label><label><span className="label">Danh mục</span><input className="input" value={admin.club.category} disabled /></label><label><span className="label">Logo URL</span><input name="logoUrl" className="input" defaultValue={admin.club.logoUrl ?? ""} /></label><label><span className="label">Ảnh bìa URL</span><input name="coverImageUrl" className="input" defaultValue={admin.club.coverImageUrl ?? ""} /></label><label className="sm:col-span-2"><span className="label">Mô tả</span><textarea name="description" className="input h-40 py-3" defaultValue={admin.club.description ?? ""} /></label><div className="sm:col-span-2 flex justify-end"><button className="btn-primary">Lưu thay đổi</button></div></form>}</main>;
-}
-
-export function TransferOwnershipPage() {
-  const admin = useAdminClub();
-  const data = useClubMembers(admin.clubId);
-  const navigate = useNavigate();
-  const [error, setError] = useState("");
-  async function transfer(member: ClubMember) { if (!confirm(`Chuyển quyền chủ nhiệm cho ${member.fullName}? Hành động này không thể hoàn tác.`)) return; try { await membershipApi.transferAdmin(admin.clubId, member.userId); navigate("/dashboard"); } catch (err) { setError(err instanceof Error ? err.message : "Không thể chuyển quyền."); } }
-  return <main className="page-shell max-w-4xl"><PageTitle title="Chuyển quyền chủ nhiệm" description="Chọn một thành viên đang hoạt động để nhận quyền chủ nhiệm CLB." />{error && <ErrorNotice message={error} />}<SectionCard title="Thành viên đủ điều kiện">{data.members.filter((m) => m.roleInClub !== "President").map((m) => <div key={m.userId} className="mb-3 flex items-center justify-between rounded-xl border p-4"><div><div className="font-bold">{m.fullName}</div><div className="text-sm text-muted">{m.studentCode ?? "Không có MSSV"} · {m.roleInClub}</div></div><button onClick={() => void transfer(m)} className="btn-secondary">Chọn</button></div>)}</SectionCard></main>;
-}
-
-export function ClubStatusPage() {
-  const admin = useAdminClub();
-  return <main className="page-shell"><PageTitle title="Trạng thái và hiển thị" /><div className="grid gap-6 lg:grid-cols-2"><SectionCard title="Trạng thái CLB">{admin.club && <StatusBadge status={admin.club.status} />}<p className="mt-3 text-muted">CLB ở trạng thái Active sẽ xuất hiện trên trang khám phá công khai.</p>{admin.club && <Link to={`/clubs/${admin.club.id}`} className="btn-secondary mt-5"><Eye className="h-4 w-4" />Xem trang công khai</Link>}</SectionCard><SectionCard title="Ngừng hoạt động"><p className="text-muted">Backend hiện chỉ cho University Admin ẩn, khóa hoặc xóa CLB. Club Admin chưa có API gửi yêu cầu ngừng hoạt động.</p></SectionCard></div></main>;
 }
