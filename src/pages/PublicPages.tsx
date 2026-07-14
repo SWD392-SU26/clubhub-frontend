@@ -562,6 +562,7 @@ export function ClubDetailPage() {
   const [error, setError] = useState("");
   const [joining, setJoining] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [cancellingRequest, setCancellingRequest] = useState(false);
   const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
   const [joinDialogOpen, setJoinDialogOpen] = useState(false);
   const [joinReason, setJoinReason] = useState("");
@@ -807,6 +808,29 @@ export function ClubDetailPage() {
     }
   };
 
+  const cancelJoinRequest = async () => {
+    if (!club || currentMembership?.status !== "Pending") return;
+
+    setCancellingRequest(true);
+    setJoinMessage("");
+    setJoinSuccess(false);
+
+    try {
+      await membershipApi.cancelJoinRequest(club.id);
+      setCurrentMembership({
+        ...currentMembership,
+        status: "Cancelled",
+      });
+      setJoinSuccess(true);
+      setJoinMessage(`Đã rút yêu cầu tham gia ${club.name}.`);
+    } catch (err) {
+      setJoinSuccess(false);
+      setJoinMessage(err instanceof Error ? err.message : "Không thể rút đơn.");
+    } finally {
+      setCancellingRequest(false);
+    }
+  };
+
   const joinButtonLabel =
     club && !isGuid(club.id)
       ? "Đang xem thông tin"
@@ -814,14 +838,17 @@ export function ClubDetailPage() {
         ? "Đã gửi yêu cầu"
         : currentMembership?.status === "Approved"
           ? "Đã là thành viên"
-          : joining
-            ? "Đang gửi..."
-            : "Gửi yêu cầu tham gia";
+          : currentMembership?.status === "Cancelled"
+            ? "Đã rút đơn"
+            : joining
+              ? "Đang gửi..."
+              : "Gửi yêu cầu tham gia";
   const joinButtonDisabled =
     Boolean(club && !isGuid(club.id)) ||
     joining ||
     currentMembership?.status === "Pending" ||
-    currentMembership?.status === "Approved";
+    currentMembership?.status === "Approved" ||
+    currentMembership?.status === "Cancelled";
   const officers = club?.officers ?? [];
   const activeUpcomingEvents = upcomingEvents.filter(
     (event) => !["Completed", "Cancelled"].includes(event.status),
@@ -884,6 +911,16 @@ export function ClubDetailPage() {
               >
                 {joinButtonLabel}
               </button>
+              {currentMembership?.status === "Pending" && (
+                <button
+                  type="button"
+                  onClick={cancelJoinRequest}
+                  disabled={cancellingRequest}
+                  className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3 font-bold text-amber-700 transition hover:border-amber-300 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {cancellingRequest ? "Đang rút..." : "Rút đơn"}
+                </button>
+              )}
               {currentMembership?.status === "Approved" && (
                 <button
                   type="button"
