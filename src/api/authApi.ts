@@ -11,13 +11,23 @@ import type {
   RefreshTokenRequest
 } from "../types/auth";
 
+function normalizeLoginResponse(data: LoginResponse): LoginResponse {
+  return {
+    ...data,
+    profile: {
+      ...data.profile,
+      systemRole: data.profile.systemRole ?? data.profile.role,
+    },
+  };
+}
+
 export const authApi = {
   login(payload: LoginRequest) {
     return apiRequest<LoginResponse>("/login", {
       method: "POST",
       body: JSON.stringify(payload),
       auth: false,
-    });
+    }).then(normalizeLoginResponse);
   },
 
   register(payload: RegisterRequest) {
@@ -25,7 +35,7 @@ export const authApi = {
       method: "POST",
       body: JSON.stringify(payload),
       auth: false,
-    });
+    }).then(normalizeLoginResponse);
   },
 
   refreshToken(payload: RefreshTokenRequest) {
@@ -33,7 +43,7 @@ export const authApi = {
       method: "POST",
       body: JSON.stringify(payload),
       auth: false,
-    });
+    }).then(normalizeLoginResponse);
   },
 
   logout() {

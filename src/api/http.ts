@@ -20,6 +20,16 @@ type RequestOptions = RequestInit & {
 
 let refreshPromise: Promise<LoginResponse> | null = null;
 
+function normalizeLoginResponse(data: LoginResponse): LoginResponse {
+  return {
+    ...data,
+    profile: {
+      ...data.profile,
+      systemRole: data.profile.systemRole ?? data.profile.role,
+    },
+  };
+}
+
 async function refreshSession() {
   const refreshToken = getRefreshToken();
 
@@ -47,8 +57,9 @@ async function refreshSession() {
           );
         }
 
-        setAuthSession(json.data);
-        return json.data;
+        const normalized = normalizeLoginResponse(json.data);
+        setAuthSession(normalized);
+        return normalized;
       })
       .finally(() => {
         refreshPromise = null;

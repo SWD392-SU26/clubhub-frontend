@@ -134,10 +134,10 @@ export function LoginPage({ compact = false }: { compact?: boolean }) {
       const isUniversityAdmin = data.profile.systemRole === "UniversityAdmin";
       const memberships = await membershipApi.getMyMemberships().catch(() => []);
       const hasClubAdminAccess = hasClubAdminPermission(memberships);
-      const defaultPath = isUniversityAdmin
-        ? "/system-admin"
-        : hasClubAdminAccess
-          ? "/club-admin"
+      const defaultPath = hasClubAdminAccess
+        ? "/club-admin"
+        : isUniversityAdmin
+          ? "/system-admin"
           : "/dashboard";
       const canUseRequestedPath =
         requestedPath.startsWith("/") &&

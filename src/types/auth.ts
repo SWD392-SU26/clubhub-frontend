@@ -8,7 +8,10 @@ export type UserProfile = {
   studentCode?: string | null;
   phone?: string | null;
   avatarUrl?: string | null;
+  role?: SystemRole;
   systemRole: SystemRole;
+  status?: string;
+  isEmailVerified?: boolean;
   createdAt: string;
 };
 

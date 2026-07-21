@@ -273,7 +273,7 @@ export function PublicHeader() {
   useEffect(() => {
     let active = true;
 
-    if (!profile || profile.systemRole === "UniversityAdmin") {
+    if (!profile) {
       setHasAdminClub(false);
       return () => {
         active = false;
@@ -299,30 +299,30 @@ export function PublicHeader() {
   }, [profile?.id, profile?.systemRole]);
 
   const isUniversityAdmin = profile?.systemRole === "UniversityAdmin";
-  const homePath = isUniversityAdmin
-    ? "/system-admin"
-    : hasAdminClub
-      ? "/club-admin"
+  const homePath = hasAdminClub
+    ? "/club-admin"
+    : isUniversityAdmin
+      ? "/system-admin"
       : "/dashboard";
-  const profilePath = isUniversityAdmin
-    ? "/system-admin/profile"
-    : hasAdminClub
-      ? "/club-admin/profile"
+  const profilePath = hasAdminClub
+    ? "/club-admin/profile"
+    : isUniversityAdmin
+      ? "/system-admin/profile"
       : "/profile";
-  const editProfilePath = isUniversityAdmin
-    ? "/system-admin/profile/edit"
-    : hasAdminClub
-      ? "/club-admin/profile/edit"
+  const editProfilePath = hasAdminClub
+    ? "/club-admin/profile/edit"
+    : isUniversityAdmin
+      ? "/system-admin/profile/edit"
       : "/profile/edit";
-  const securityPath = isUniversityAdmin
-    ? "/system-admin/account/security"
-    : hasAdminClub
-      ? "/club-admin/account/security"
+  const securityPath = hasAdminClub
+    ? "/club-admin/account/security"
+    : isUniversityAdmin
+      ? "/system-admin/account/security"
       : "/account/security";
-  const workspace = isUniversityAdmin
-    ? "University Admin workspace"
-    : hasAdminClub
-      ? "Club Admin workspace"
+  const workspace = hasAdminClub
+    ? "Club Admin workspace"
+    : isUniversityAdmin
+      ? "University Admin workspace"
       : "Student workspace";
 
   return (

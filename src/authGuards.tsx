@@ -92,21 +92,19 @@ export function RequireGuestLanding() {
         return;
       }
 
-      if (profile?.systemRole === "UniversityAdmin") {
-        setHomePath("/system-admin");
-        return;
-      }
-
       try {
         const memberships = await membershipApi.getMyMemberships();
         if (!ignore) {
+          const hasClubAdminAccess = hasClubAdminPermission(memberships);
           setHomePath(
-            hasClubAdminPermission(memberships) ? "/club-admin" : "/dashboard",
+            hasClubAdminAccess
+              ? "/club-admin"
+              : getHomePath(profile),
           );
         }
       } catch {
         if (!ignore) {
-          setHomePath("/dashboard");
+          setHomePath(getHomePath(profile));
         }
       }
     }
@@ -120,10 +118,6 @@ export function RequireGuestLanding() {
 
   if (!isAuthenticated) {
     return <Outlet />;
-  }
-
-  if (profile?.systemRole === "UniversityAdmin") {
-    return <Navigate to={getHomePath(profile)} replace />;
   }
 
   if (!homePath) {
