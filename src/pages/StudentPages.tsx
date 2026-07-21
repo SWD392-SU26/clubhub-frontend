@@ -24,11 +24,13 @@ import { clearAuthSession, getProfile, setProfile } from "../api/authStorage";
 import { clubApi } from "../api/clubApi";
 import { eventApi } from "../api/eventApi";
 import { membershipApi } from "../api/membershipApi";
+import { notificationApi } from "../api/notificationApi";
 import { pointApi } from "../api/pointApi";
 import { proposalApi } from "../api/proposalApi";
 import type { UserProfile } from "../types/auth";
 import type { ClubCategory, ClubSummary, MyMembership } from "../types/club";
 import type { EventDto, EventRegistration } from "../types/event";
+import type { NotificationDto } from "../types/notification";
 import type { MyPointSummary } from "../types/point";
 import type {
   ProposalDetail,
@@ -107,6 +109,10 @@ const clubCategoryOptions: Array<{ label: string; value?: ClubCategory }> = [
   { label: "Khởi nghiệp", value: "Entrepreneurship" },
 ];
 
+const clubCategoryValues = clubCategoryOptions
+  .map((option) => option.value)
+  .filter(Boolean) as ClubCategory[];
+
 const clubCategoryLabels: Record<string, string> = {
   Academic: "Học thuật",
   Technology: "Công nghệ",
@@ -130,6 +136,7 @@ function getMembershipStatusLabel(membership?: MyMembership) {
   if (membership.status === "Pending") return "Đang chờ duyệt";
   if (membership.status === "Approved") return "Đã tham gia";
   if (membership.status === "Rejected") return "Đã bị từ chối";
+  if (membership.status === "Cancelled") return "Đã rút đơn";
   if (membership.status === "Left") return "Đã rời CLB";
 
   return membership.status;
@@ -169,6 +176,7 @@ type ProposalDraft = {
 };
 
 const PROPOSAL_DRAFT_KEY = "clubhub_proposal_draft";
+const PROPOSAL_RESUBMIT_KEY = "clubhub_proposal_resubmit_id";
 
 const emptyProposalDraft: ProposalDraft = {
   clubName: "",
@@ -184,6 +192,37 @@ const emptyProposalDraft: ProposalDraft = {
   advisor: "",
   notes: "",
 };
+
+function getProposalCategory(category?: string | null): ClubCategory {
+  return clubCategoryValues.includes(category as ClubCategory)
+    ? (category as ClubCategory)
+    : "Technology";
+}
+
+function proposalToDraft(
+  proposal: ProposalDetail,
+  profile?: UserProfile | null,
+): ProposalDraft {
+  return {
+    clubName: proposal.clubName ?? "",
+    category: getProposalCategory(proposal.category),
+    description: proposal.description ?? "",
+    mission: proposal.mission ?? "",
+    reason: proposal.reason ?? "",
+    activityPlan: proposal.activityPlan ?? "",
+    founderInfo:
+      proposal.founderInfo ||
+      profile?.fullName ||
+      profile?.username ||
+      "",
+    founderStudentCode:
+      proposal.founderStudentCode || profile?.studentCode || "",
+    contactEmail: proposal.contactEmail || profile?.email || "",
+    contactPhone: proposal.contactPhone || profile?.phone || "",
+    advisor: proposal.advisor ?? "",
+    notes: proposal.notes ?? "",
+  };
+}
 
 function getProposalStatusLabel(status?: string | null) {
   if (!status) return "Chưa rõ";
@@ -343,6 +382,7 @@ export function StudentDashboard() {
   const [clubEvents, setClubEvents] = useState<EventDto[]>([]);
   const [pointSummary, setPointSummary] = useState<MyPointSummary | null>(null);
   const [joinedClubCount, setJoinedClubCount] = useState(0);
+  const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
   const [showAllClubEvents, setShowAllClubEvents] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -355,11 +395,17 @@ export function StudentDashboard() {
       setError("");
 
       try {
-        const [clubResult, membershipResult, eventRegistrations] =
+        const [
+          clubResult,
+          membershipResult,
+          eventRegistrations,
+          unreadNotifications,
+        ] =
           await Promise.all([
             clubApi.getMyClubs(1, 4),
             membershipApi.getMyMemberships(),
             eventApi.getMyEvents().catch(() => []),
+            notificationApi.getUnreadCount().catch(() => ({ count: 0 })),
           ]);
 
         if (ignore) return;
@@ -376,6 +422,7 @@ export function StudentDashboard() {
         setMemberships(membershipResult);
         setMyEvents(eventRegistrations);
         setJoinedClubCount(clubResult.totalCount);
+        setNotificationUnreadCount(unreadNotifications.count);
 
         if (approvedClubIds.length > 0) {
           const [clubEventResults, points] = await Promise.all([
@@ -462,6 +509,14 @@ export function StudentDashboard() {
     dashboardNotes.push({
       text: `${pendingMembershipCount} yêu cầu tham gia CLB đang chờ duyệt.`,
       to: "/join-requests",
+      tone: "primary",
+    });
+  }
+
+  if (notificationUnreadCount > 0) {
+    dashboardNotes.push({
+      text: `${notificationUnreadCount} thông báo chưa đọc.`,
+      to: "/notifications",
       tone: "primary",
     });
   }
@@ -1271,6 +1326,14 @@ export function AccountSecurityPage() {
   );
 }
 export function NotificationsPage() {
+  const [notifications, setNotifications] = useState<NotificationDto[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+  const [markingId, setMarkingId] = useState("");
+  const [markingAll, setMarkingAll] = useState(false);
+
   const quickLinks = [
     {
       title: "Sự kiện của tôi",
@@ -1292,18 +1355,215 @@ export function NotificationsPage() {
     },
   ];
 
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadNotifications() {
+      setLoading(true);
+      setError("");
+
+      try {
+        const [notificationResult, unreadResult] = await Promise.all([
+          notificationApi.getNotifications(1, 20),
+          notificationApi.getUnreadCount(),
+        ]);
+
+        if (!ignore) {
+          setNotifications(notificationResult.items);
+          setUnreadCount(unreadResult.count);
+        }
+      } catch (err) {
+        if (!ignore) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Không tải được danh sách thông báo.",
+          );
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadNotifications();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  const markAsRead = async (notification: NotificationDto) => {
+    if (notification.isRead) return;
+
+    setMarkingId(notification.id);
+    setError("");
+    setSuccessMessage("");
+
+    try {
+      await notificationApi.markAsRead(notification.id);
+      setNotifications((current) =>
+        current.map((item) =>
+          item.id === notification.id ? { ...item, isRead: true } : item,
+        ),
+      );
+      setUnreadCount((current) => Math.max(0, current - 1));
+      window.dispatchEvent(new Event("clubhub_notifications_updated"));
+      setSuccessMessage("Đã đánh dấu thông báo là đã đọc.");
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Không thể đánh dấu thông báo đã đọc.",
+      );
+    } finally {
+      setMarkingId("");
+    }
+  };
+
+  const markAllAsRead = async () => {
+    if (unreadCount === 0) return;
+
+    setMarkingAll(true);
+    setError("");
+    setSuccessMessage("");
+
+    try {
+      await notificationApi.markAllAsRead();
+      setNotifications((current) =>
+        current.map((item) => ({ ...item, isRead: true })),
+      );
+      setUnreadCount(0);
+      window.dispatchEvent(new Event("clubhub_notifications_updated"));
+      setSuccessMessage("Đã đánh dấu tất cả thông báo là đã đọc.");
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Không thể đánh dấu tất cả thông báo đã đọc.",
+      );
+    } finally {
+      setMarkingAll(false);
+    }
+  };
+
   return (
     <main className="page-shell">
       <PageTitle
         title="Trung tâm thông báo"
-        description="Theo dõi cập nhật quan trọng từ hệ thống và các câu lạc bộ."
+        description={
+          unreadCount > 0
+            ? `Bạn có ${unreadCount} thông báo chưa đọc.`
+            : "Theo dõi cập nhật quan trọng từ hệ thống và các câu lạc bộ."
+        }
+        actions={
+          <button
+            type="button"
+            onClick={markAllAsRead}
+            disabled={markingAll || unreadCount === 0}
+            className="btn-secondary"
+          >
+            <CheckCircle2 className="h-4 w-4" />
+            {markingAll ? "Đang cập nhật..." : "Đánh dấu tất cả đã đọc"}
+          </button>
+        }
       />
 
-      <SectionCard title="Thông báo">
-        <EmptyState
-          title="Chưa có thông báo mới"
-          description="Các thông báo từ hệ thống và câu lạc bộ sẽ xuất hiện tại đây khi có cập nhật."
-        />
+      {error && (
+        <p className="mb-5 rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+          {error}
+        </p>
+      )}
+
+      {successMessage && (
+        <p className="mb-5 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+          {successMessage}
+        </p>
+      )}
+
+      <SectionCard
+        title="Thông báo"
+        action={
+          <span className="rounded-full bg-primary-soft px-3 py-1 text-xs font-bold text-primary">
+            {unreadCount} chưa đọc
+          </span>
+        }
+      >
+        {loading && (
+          <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-muted">
+            Đang tải thông báo...
+          </p>
+        )}
+
+        {!loading && notifications.length === 0 && (
+          <EmptyState
+            title="Chưa có thông báo mới"
+            description="Các thông báo từ hệ thống và câu lạc bộ sẽ xuất hiện tại đây khi có cập nhật."
+          />
+        )}
+
+        {!loading && notifications.length > 0 && (
+          <div className="space-y-3">
+            {notifications.map((notification) => (
+              <article
+                key={notification.id}
+                className={`rounded-xl border p-4 transition ${
+                  notification.isRead
+                    ? "border-slate-200 bg-white"
+                    : "border-primary/30 bg-primary-soft/70"
+                }`}
+              >
+                <div className="flex items-start gap-4">
+                  <span
+                    className={`mt-1 grid h-10 w-10 shrink-0 place-items-center rounded-xl ${
+                      notification.isRead
+                        ? "bg-slate-100 text-slate-500"
+                        : "bg-primary text-white"
+                    }`}
+                  >
+                    <Bell className="h-5 w-5" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="font-bold text-ink">
+                        {notification.title}
+                      </h3>
+                      {!notification.isRead && (
+                        <span className="rounded-full bg-primary px-2 py-0.5 text-xs font-bold text-white">
+                          Mới
+                        </span>
+                      )}
+                      {notification.type && (
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
+                          {notification.type}
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-2 leading-6 text-muted">
+                      {notification.content}
+                    </p>
+                    <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-muted">
+                      <span>{formatFullDate(notification.createdAt)}</span>
+                      {!notification.isRead && (
+                        <button
+                          type="button"
+                          onClick={() => markAsRead(notification)}
+                          disabled={markingId === notification.id}
+                          className="font-semibold text-primary hover:text-primary-dark"
+                        >
+                          {markingId === notification.id
+                            ? "Đang cập nhật..."
+                            : "Đánh dấu đã đọc"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
       </SectionCard>
 
       <section className="mt-6 grid gap-4 md:grid-cols-3">
@@ -1348,6 +1608,7 @@ export function MyClubsPage() {
   const [loading, setLoading] = useState(true);
   const [joiningClubId, setJoiningClubId] = useState("");
   const [leavingClubId, setLeavingClubId] = useState("");
+  const [cancellingClubId, setCancellingClubId] = useState("");
   const [joinTarget, setJoinTarget] = useState<ClubSummary | null>(null);
   const [leaveTarget, setLeaveTarget] = useState<ClubSummary | null>(null);
   const [joinReason, setJoinReason] = useState("");
@@ -1413,7 +1674,10 @@ export function MyClubsPage() {
     }
 
     if (membershipFilter === "available") {
-      return !membership || ["Rejected", "Left"].includes(membership.status);
+      return (
+        !membership ||
+        ["Rejected", "Left"].includes(membership.status)
+      );
     }
 
     return true;
@@ -1543,6 +1807,32 @@ export function MyClubsPage() {
     }
   };
 
+  const cancelJoinRequest = async (club: ClubSummary) => {
+    setCancellingClubId(club.id);
+    setError("");
+    setSuccessMessage("");
+
+    try {
+      await membershipApi.cancelJoinRequest(club.id);
+
+      setMemberships((current) =>
+        current.map((membership) =>
+          membership.clubId === club.id
+            ? {
+                ...membership,
+                status: "Cancelled",
+              }
+            : membership,
+        ),
+      );
+      setSuccessMessage(`Đã rút yêu cầu tham gia ${club.name}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Không thể rút đơn.");
+    } finally {
+      setCancellingClubId("");
+    }
+  };
+
   const membershipFilterOptions: Array<{
     label: string;
     value: "all" | "approved" | "pending" | "available";
@@ -1628,7 +1918,8 @@ export function MyClubsPage() {
           {filteredClubs.map((club) => {
             const membership = getMembership(club.id);
             const canJoin =
-              !membership || ["Rejected", "Left"].includes(membership.status);
+              !membership ||
+              ["Rejected", "Left"].includes(membership.status);
             const manager = isClubManager(membership);
 
             return (
@@ -1688,6 +1979,17 @@ export function MyClubsPage() {
                       >
                         {joiningClubId === club.id ? "Đang gửi..." : "Tham gia"}
                       </button>
+                    ) : membership?.status === "Pending" ? (
+                      <button
+                        type="button"
+                        onClick={() => cancelJoinRequest(club)}
+                        disabled={cancellingClubId === club.id}
+                        className="flex flex-1 items-center justify-center rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 font-bold text-amber-700 transition hover:border-amber-300 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {cancellingClubId === club.id
+                          ? "Đang rút..."
+                          : "Rút đơn"}
+                      </button>
                     ) : membership?.status === "Approved" ? (
                       <button
                         type="button"
@@ -1703,9 +2005,7 @@ export function MyClubsPage() {
                         disabled
                         className="btn-secondary flex-1 justify-center opacity-70"
                       >
-                        {membership?.status === "Pending"
-                          ? "Đang chờ duyệt"
-                          : "Đã tham gia"}
+                        {getMembershipStatusLabel(membership)}
                       </button>
                     )}
                   </div>
@@ -1974,10 +2274,12 @@ export function JoinRequestsPage() {
   const [memberships, setMemberships] = useState<MyMembership[]>([]);
   const [searchText, setSearchText] = useState("");
   const [statusFilter, setStatusFilter] = useState<
-    "all" | "Pending" | "Approved" | "Rejected" | "Left"
+    "all" | "Pending" | "Approved" | "Rejected" | "Cancelled" | "Left"
   >("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+  const [cancellingClubId, setCancellingClubId] = useState("");
 
   useEffect(() => {
     let ignore = false;
@@ -2026,14 +2328,42 @@ export function JoinRequestsPage() {
 
   const statusOptions: Array<{
     label: string;
-    value: "all" | "Pending" | "Approved" | "Rejected" | "Left";
+    value: "all" | "Pending" | "Approved" | "Rejected" | "Cancelled" | "Left";
   }> = [
     { label: "Tất cả", value: "all" },
     { label: "Đang chờ", value: "Pending" },
     { label: "Đã duyệt", value: "Approved" },
     { label: "Đã từ chối", value: "Rejected" },
+    { label: "Đã rút", value: "Cancelled" },
     { label: "Đã rời", value: "Left" },
   ];
+
+  const cancelJoinRequest = async (membership: MyMembership) => {
+    if (membership.status !== "Pending") return;
+
+    setCancellingClubId(membership.clubId);
+    setError("");
+    setSuccessMessage("");
+
+    try {
+      await membershipApi.cancelJoinRequest(membership.clubId);
+      setMemberships((current) =>
+        current.map((item) =>
+          item.clubId === membership.clubId
+            ? {
+                ...item,
+                status: "Cancelled",
+              }
+            : item,
+        ),
+      );
+      setSuccessMessage(`Đã rút yêu cầu tham gia ${membership.clubName}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Không thể rút đơn.");
+    } finally {
+      setCancellingClubId("");
+    }
+  };
 
   return (
     <main className="page-shell">
@@ -2071,6 +2401,12 @@ export function JoinRequestsPage() {
         </p>
       )}
 
+      {successMessage && (
+        <p className="mb-5 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+          {successMessage}
+        </p>
+      )}
+
       {loading && (
         <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-muted">
           Đang tải yêu cầu tham gia CLB...
@@ -2087,12 +2423,32 @@ export function JoinRequestsPage() {
       {!loading && filteredMemberships.length > 0 && (
         <section className="card overflow-hidden">
           <DataTable
-            columns={["Tên câu lạc bộ", "Ngày gửi", "Vai trò", "Trạng thái"]}
+            columns={[
+              "Tên câu lạc bộ",
+              "Ngày gửi",
+              "Vai trò",
+              "Trạng thái",
+              "Thao tác",
+            ]}
             rows={filteredMemberships.map((membership) => [
               membership.clubName,
               formatShortDate(membership.requestedAt),
               membership.roleInClub,
               <StatusBadge status={getMembershipStatusLabel(membership)} />,
+              membership.status === "Pending" ? (
+                <button
+                  type="button"
+                  onClick={() => cancelJoinRequest(membership)}
+                  disabled={cancellingClubId === membership.clubId}
+                  className="btn-ghost text-red-600 hover:bg-red-50 hover:text-red-700"
+                >
+                  {cancellingClubId === membership.clubId
+                    ? "Đang rút..."
+                    : "Rút đơn"}
+                </button>
+              ) : (
+                <span className="text-sm text-muted">--</span>
+              ),
             ])}
           />
         </section>
@@ -2102,11 +2458,14 @@ export function JoinRequestsPage() {
 }
 
 export function ClubProposalsPage() {
+  const navigate = useNavigate();
+  const profile = useCurrentProfile();
   const [items, setItems] = useState<ProposalSummary[]>([]);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<ProposalStatus | "All">("All");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [startingResubmitId, setStartingResubmitId] = useState("");
 
   useEffect(() => {
     let ignore = false;
@@ -2151,6 +2510,34 @@ export function ClubProposalsPage() {
 
     return matchesQuery && matchesStatus;
   });
+
+  const startResubmit = async (proposal: ProposalSummary) => {
+    if (proposal.status !== "NeedsRevision") return;
+
+    setStartingResubmitId(proposal.id);
+    setError("");
+
+    try {
+      const detail = await proposalApi.getProposalById(proposal.id);
+
+      if (detail.status !== "NeedsRevision") {
+        setError("Chỉ có thể nộp lại hồ sơ khi được yêu cầu chỉnh sửa.");
+        return;
+      }
+
+      sessionStorage.setItem(PROPOSAL_RESUBMIT_KEY, detail.id);
+      writeProposalDraft(proposalToDraft(detail, profile));
+      navigate(`/club-proposals/new/step-1?resubmit=${detail.id}`);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Không tải được hồ sơ cần nộp lại.",
+      );
+    } finally {
+      setStartingResubmitId("");
+    }
+  };
 
   return (
     <main className="page-shell">
@@ -2221,9 +2608,26 @@ export function ClubProposalsPage() {
               getClubCategoryLabel(proposal.category),
               formatFullDate(proposal.submittedAt),
               <StatusBadge status={getProposalStatusLabel(proposal.status)} />,
-              <Link to={`/club-proposals/${proposal.id}`} className="btn-ghost">
-                Xem chi tiết
-              </Link>,
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  to={`/club-proposals/${proposal.id}`}
+                  className="btn-ghost"
+                >
+                  Xem chi tiết
+                </Link>
+                {proposal.status === "NeedsRevision" && (
+                  <button
+                    type="button"
+                    onClick={() => startResubmit(proposal)}
+                    disabled={startingResubmitId === proposal.id}
+                    className="btn-primary"
+                  >
+                    {startingResubmitId === proposal.id
+                      ? "Đang mở..."
+                      : "Nộp lại"}
+                  </button>
+                )}
+              </div>,
             ])}
           />
         </section>
@@ -2234,6 +2638,8 @@ export function ClubProposalsPage() {
 
 export function ClubProposalDetailPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const profile = useCurrentProfile();
   const [proposal, setProposal] = useState<ProposalDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -2299,6 +2705,14 @@ export function ClubProposalDetailPage() {
     );
   }
 
+  const canResubmit = proposal.status === "NeedsRevision";
+
+  const startResubmit = () => {
+    sessionStorage.setItem(PROPOSAL_RESUBMIT_KEY, proposal.id);
+    writeProposalDraft(proposalToDraft(proposal, profile));
+    navigate(`/club-proposals/new/step-1?resubmit=${proposal.id}`);
+  };
+
   return (
     <main className="page-shell">
       <PageTitle
@@ -2306,9 +2720,17 @@ export function ClubProposalDetailPage() {
         title={proposal.clubName}
         description="Chi tiết hồ sơ đề xuất và phản hồi từ ban quản lý."
         actions={
-          <Link to="/club-proposals" className="btn-secondary">
-            Quay lại danh sách
-          </Link>
+          <>
+            <Link to="/club-proposals" className="btn-secondary">
+              Quay lại danh sách
+            </Link>
+            {canResubmit && (
+              <button type="button" onClick={startResubmit} className="btn-primary">
+                <Edit3 className="h-4 w-4" />
+                Chỉnh sửa & nộp lại
+              </button>
+            )}
+          </>
         }
       />
       <div className="grid gap-6 lg:grid-cols-[1.4fr_.8fr]">
@@ -2402,7 +2824,12 @@ export function ClubProposalDetailPage() {
 
 export function ProposalStepPage({ step }: { step: number }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const profile = useCurrentProfile();
+  const searchParams = new URLSearchParams(location.search);
+  const resubmitId = searchParams.get("resubmit") || "";
+  const resubmitQuery = resubmitId ? `?resubmit=${resubmitId}` : "";
+  const isResubmitting = Boolean(resubmitId);
   const [draft, setDraft] = useState<ProposalDraft>(() => {
     const storedDraft = readProposalDraft();
 
@@ -2418,6 +2845,14 @@ export function ProposalStepPage({ step }: { step: number }) {
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [draftLoading, setDraftLoading] = useState(() => {
+    if (!resubmitId) return false;
+
+    return (
+      sessionStorage.getItem(PROPOSAL_RESUBMIT_KEY) !== resubmitId ||
+      !sessionStorage.getItem(PROPOSAL_DRAFT_KEY)
+    );
+  });
 
   const titles = [
     "Thông tin cơ bản",
@@ -2426,6 +2861,70 @@ export function ProposalStepPage({ step }: { step: number }) {
     "Đính kèm tài liệu",
     "Kiểm tra & Gửi đề xuất",
   ];
+
+  useEffect(() => {
+    if (!resubmitId) {
+      sessionStorage.removeItem(PROPOSAL_RESUBMIT_KEY);
+      setDraftLoading(false);
+      return;
+    }
+
+    const storedResubmitId = sessionStorage.getItem(PROPOSAL_RESUBMIT_KEY);
+    const storedDraft = sessionStorage.getItem(PROPOSAL_DRAFT_KEY);
+
+    if (storedResubmitId === resubmitId && storedDraft) {
+      setDraftLoading(false);
+      return;
+    }
+
+    let ignore = false;
+
+    async function loadProposalForResubmit() {
+      setDraftLoading(true);
+      setError("");
+
+      try {
+        const proposal = await proposalApi.getProposalById(resubmitId);
+
+        if (ignore) return;
+
+        if (proposal.status !== "NeedsRevision") {
+          setError("Chỉ có thể nộp lại hồ sơ khi được yêu cầu chỉnh sửa.");
+          return;
+        }
+
+        const nextDraft = proposalToDraft(proposal, profile);
+        setDraft(nextDraft);
+        writeProposalDraft(nextDraft);
+        sessionStorage.setItem(PROPOSAL_RESUBMIT_KEY, resubmitId);
+      } catch (err) {
+        if (!ignore) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Không tải được hồ sơ cần nộp lại.",
+          );
+        }
+      } finally {
+        if (!ignore) {
+          setDraftLoading(false);
+        }
+      }
+    }
+
+    loadProposalForResubmit();
+
+    return () => {
+      ignore = true;
+    };
+  }, [
+    resubmitId,
+    profile?.email,
+    profile?.fullName,
+    profile?.phone,
+    profile?.studentCode,
+    profile?.username,
+  ]);
 
   const updateDraft = (field: keyof ProposalDraft, value: string) => {
     setDraft((current) => {
@@ -2468,7 +2967,7 @@ export function ProposalStepPage({ step }: { step: number }) {
     writeProposalDraft(draft);
 
     if (step < 5) {
-      navigate(`/club-proposals/new/step-${step + 1}`);
+      navigate(`/club-proposals/new/step-${step + 1}${resubmitQuery}`);
       return;
     }
 
@@ -2476,22 +2975,50 @@ export function ProposalStepPage({ step }: { step: number }) {
     setError("");
 
     try {
-      await proposalApi.submitProposal(toSubmitProposalRequest(draft));
+      const payload = toSubmitProposalRequest(draft);
+
+      if (resubmitId) {
+        await proposalApi.resubmitProposal(resubmitId, payload);
+      } else {
+        await proposalApi.submitProposal(payload);
+      }
+
       sessionStorage.removeItem(PROPOSAL_DRAFT_KEY);
+      sessionStorage.removeItem(PROPOSAL_RESUBMIT_KEY);
       navigate("/club-proposals", { replace: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gửi đề xuất thất bại.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : isResubmitting
+            ? "Nộp lại đề xuất thất bại."
+            : "Gửi đề xuất thất bại.",
+      );
     } finally {
       setLoading(false);
     }
   };
 
+  if (draftLoading) {
+    return (
+      <main className="page-shell max-w-5xl">
+        <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-muted">
+          Đang tải hồ sơ cần nộp lại...
+        </p>
+      </main>
+    );
+  }
+
   return (
     <main className="page-shell max-w-5xl">
       <PageTitle
-        eyebrow={`Bước ${step}/5`}
+        eyebrow={`${isResubmitting ? "Nộp lại" : "Bước"} ${step}/5`}
         title={titles[step - 1]}
-        description="Hoàn thiện hồ sơ đề xuất thành lập CLB để gửi ban quản lý xét duyệt."
+        description={
+          isResubmitting
+            ? "Cập nhật hồ sơ theo phản hồi của ban quản lý rồi nộp lại để xét duyệt."
+            : "Hoàn thiện hồ sơ đề xuất thành lập CLB để gửi ban quản lý xét duyệt."
+        }
       />
       <section className="card p-6">
         <div className="mb-6 flex gap-2">
@@ -2704,7 +3231,7 @@ export function ProposalStepPage({ step }: { step: number }) {
           <Link
             to={
               step > 1
-                ? `/club-proposals/new/step-${step - 1}`
+                ? `/club-proposals/new/step-${step - 1}${resubmitQuery}`
                 : "/club-proposals"
             }
             className="btn-secondary"
@@ -2717,7 +3244,15 @@ export function ProposalStepPage({ step }: { step: number }) {
             disabled={loading}
             className="btn-primary"
           >
-            {loading ? "Đang gửi..." : step < 5 ? "Tiếp theo" : "Gửi đề xuất"}
+            {loading
+              ? isResubmitting
+                ? "Đang nộp lại..."
+                : "Đang gửi..."
+              : step < 5
+                ? "Tiếp theo"
+                : isResubmitting
+                  ? "Nộp lại đề xuất"
+                  : "Gửi đề xuất"}
             <Send className="h-4 w-4" />
           </button>
         </div>

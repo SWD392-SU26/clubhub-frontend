@@ -19,6 +19,16 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import { AuthShell, Brand } from "../components";
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const STUDENT_CODE_PATTERN = /^[A-Z]{2}\d{6}$/;
+const USERNAME_PATTERN = /^[A-Za-z0-9._-]{3,50}$/;
+const VIETNAM_PHONE_PATTERN = /^(0[35789]\d{8}|84[35789]\d{8})$/;
+
+function normalizePhone(value: string) {
+  return value.trim().replace(/[\s.-]+/g, "").replace(/^\+84/, "84");
+}
+
 function Field({
   label,
   type = "text",
@@ -275,29 +285,43 @@ export function RegisterPage() {
     e.preventDefault();
 
     const nextErrors: typeof fieldErrors = {};
-    const normalizedPhone = phone.trim().replace(/\s+/g, "");
+    const trimmedFullName = fullName.trim();
+    const trimmedUsername = username.trim();
+    const normalizedStudentCode = studentCode.trim().toUpperCase();
+    const trimmedEmail = email.trim();
+    const normalizedPhone = normalizePhone(phone);
 
-    if (!fullName.trim()) {
+    if (!trimmedFullName) {
       nextErrors.fullName = "Vui lòng nhập họ và tên.";
+    } else if (trimmedFullName.length > 100) {
+      nextErrors.fullName = "Họ và tên không được vượt quá 100 ký tự.";
     }
 
-    if (!username.trim()) {
+    if (!trimmedUsername) {
       nextErrors.username = "Vui lòng nhập username.";
+    } else if (!USERNAME_PATTERN.test(trimmedUsername)) {
+      nextErrors.username =
+        "Username cần 3-50 ký tự, chỉ gồm chữ, số, dấu chấm, gạch dưới hoặc gạch ngang.";
     }
 
-    if (!studentCode.trim()) {
+    if (!normalizedStudentCode) {
       nextErrors.studentCode = "Vui lòng nhập mã số sinh viên.";
+    } else if (!STUDENT_CODE_PATTERN.test(normalizedStudentCode)) {
+      nextErrors.studentCode =
+        "Mã số sinh viên cần đúng định dạng, ví dụ SE180001.";
     }
 
-    if (!email.trim()) {
+    if (!trimmedEmail) {
       nextErrors.email = "Vui lòng nhập email trường.";
+    } else if (!EMAIL_PATTERN.test(trimmedEmail)) {
+      nextErrors.email = "Email cần đúng định dạng, ví dụ name@fpt.edu.vn.";
     }
 
-    if (
-      normalizedPhone &&
-      !/^(0(3|5|7|8|9)\d{8}|\+84(3|5|7|8|9)\d{8})$/.test(normalizedPhone)
-    ) {
-      nextErrors.phone = "Số điện thoại không hợp lệ.";
+    if (!normalizedPhone) {
+      nextErrors.phone = "Vui lòng nhập số điện thoại.";
+    } else if (!VIETNAM_PHONE_PATTERN.test(normalizedPhone)) {
+      nextErrors.phone =
+        "Số điện thoại cần là số Việt Nam, ví dụ 0900000000 hoặc +84900000000.";
     }
 
     if (!password) {
@@ -328,12 +352,12 @@ export function RegisterPage() {
 
     try {
       await authApi.register({
-        fullName: fullName.trim(),
-        username: username.trim(),
-        email: email.trim(),
+        fullName: trimmedFullName,
+        username: trimmedUsername,
+        email: trimmedEmail,
         password,
-        studentCode: studentCode.trim(),
-        phone: normalizedPhone || undefined,
+        studentCode: normalizedStudentCode,
+        phone: normalizedPhone,
       });
 
       navigate("/login", { 

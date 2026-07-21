@@ -18,4 +18,10 @@ export const membershipApi = {
       method: "DELETE",
     });
   },
+
+  cancelJoinRequest(clubId: string) {
+    return apiRequest<boolean>(`/api/clubs/${clubId}/members/cancel-request`, {
+      method: "DELETE",
+    });
+  },
 };
