@@ -39,6 +39,10 @@ function normalizePhone(value: string) {
   return normalized;
 }
 
+function normalizeEmail(value: string) {
+  return value.trim().toLowerCase();
+}
+
 function Field({
   label,
   type = "text",
@@ -305,7 +309,7 @@ export function RegisterPage() {
     const trimmedFullName = fullName.trim();
     const trimmedUsername = username.trim();
     const normalizedStudentCode = studentCode.trim().toUpperCase();
-    const trimmedEmail = email.trim().toLowerCase();
+    const trimmedEmail = normalizeEmail(email);
     const normalizedPhone = normalizePhone(phone);
 
     if (!trimmedFullName) {
@@ -538,7 +542,7 @@ export function VerifyEmailPage() {
   const submit = async (e: FormEvent) => {
     e.preventDefault();
 
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = normalizeEmail(email);
     const normalizedOtp = otp.trim();
     const nextErrors: typeof fieldErrors = {};
 
@@ -551,7 +555,7 @@ export function VerifyEmailPage() {
     if (!normalizedOtp) {
       nextErrors.otp = "Vui lòng nhập mã OTP.";
     } else if (!OTP_PATTERN.test(normalizedOtp)) {
-      nextErrors.otp = "OTP cần gồm đúng 6 chữ số.";
+      nextErrors.otp = "Mã OTP cần gồm đúng 6 chữ số.";
     }
 
     if (Object.keys(nextErrors).length > 0) {
@@ -572,11 +576,13 @@ export function VerifyEmailPage() {
 
       navigate("/login", {
         replace: true,
-        state: { message: "Xác thực email thành công. Vui lòng đăng nhập." },
+        state: {
+          message: "Xác thực email thành công. Vui lòng đăng nhập.",
+        },
       });
     } catch (err) {
       setFormError(
-        err instanceof Error ? err.message : "Xác thực OTP thất bại.",
+        err instanceof Error ? err.message : "Xác thực email thất bại.",
       );
     } finally {
       setLoading(false);
@@ -584,65 +590,67 @@ export function VerifyEmailPage() {
   };
 
   return (
-    <AuthShell headline="Xác thực email để kích hoạt tài khoản.">
-      <div className="w-full max-w-lg">
+    <AuthShell headline="Xác thực tài khoản để bắt đầu tham gia CLB.">
+      <form onSubmit={submit} className="card w-full max-w-lg space-y-5 p-7">
         <div className="grid h-14 w-14 place-items-center rounded-2xl bg-primary-soft text-primary">
           <ShieldCheck />
         </div>
-        <h1 className="mt-5 text-3xl font-extrabold">Nhập mã OTP</h1>
-        <p className="mt-2 text-muted">
-          Mã OTP gồm 6 chữ số và có hiệu lực trong 10 phút.
-        </p>
+        <div>
+          <h1 className="text-2xl font-extrabold">Xác thực email</h1>
+          <p className="mt-2 text-sm text-muted">
+            Nhập mã OTP 6 chữ số đã được gửi về email trường của bạn.
+          </p>
+        </div>
         {state.message && (
-          <p className="mt-5 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+          <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
             {state.message}
           </p>
         )}
-        <form onSubmit={submit} className="card mt-7 space-y-5 p-7">
-          <Field
-            label="Email trường"
-            placeholder="a.nv@university.edu.vn"
-            icon={Mail}
-            value={email}
-            onChange={(value) => {
-              setEmail(value);
-              setFieldErrors((prev) => ({ ...prev, email: undefined }));
-            }}
-            error={fieldErrors.email}
-          />
-          <Field
-            label="Mã OTP"
-            placeholder="Nhập 6 chữ số"
-            icon={ShieldCheck}
-            value={otp}
-            maxLength={6}
-            inputMode="numeric"
-            onChange={(value) => {
-              setOtp(value.replace(/\D/g, "").slice(0, 6));
-              setFieldErrors((prev) => ({ ...prev, otp: undefined }));
-            }}
-            error={fieldErrors.otp}
-          />
-          {formError && (
-            <p className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
-              {formError}
-            </p>
-          )}
-          <button disabled={loading} className="btn-primary w-full">
-            {loading ? "Đang xác thực..." : "Xác thực tài khoản"}
-          </button>
-        </form>
-        <Link to="/login" className="btn-ghost mt-5">
+        <Field
+          label="Email trường"
+          placeholder="a.nv@university.edu.vn"
+          icon={Mail}
+          value={email}
+          onChange={(value) => {
+            setEmail(value);
+            setFieldErrors((prev) => ({ ...prev, email: undefined }));
+            setFormError("");
+          }}
+          error={fieldErrors.email}
+          inputMode="email"
+        />
+        <Field
+          label="Mã OTP"
+          placeholder="Nhập 6 chữ số"
+          icon={ShieldCheck}
+          value={otp}
+          onChange={(value) => {
+            setOtp(value.replace(/\D/g, "").slice(0, 6));
+            setFieldErrors((prev) => ({ ...prev, otp: undefined }));
+            setFormError("");
+          }}
+          error={fieldErrors.otp}
+          inputMode="numeric"
+          maxLength={6}
+        />
+        {formError && (
+          <p className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+            {formError}
+          </p>
+        )}
+        <button disabled={loading} className="btn-primary w-full">
+          {loading ? "Đang xác thực..." : "Xác thực tài khoản"}
+        </button>
+        <Link to="/login" className="btn-ghost w-full justify-center">
           Quay lại đăng nhập
         </Link>
-      </div>
+      </form>
     </AuthShell>
   );
 }
 
 export function ForgotPasswordPage() {
   const navigate = useNavigate();
-  const [sent, setSent] = useState(false);
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -650,7 +658,7 @@ export function ForgotPasswordPage() {
   const submit = async (e: FormEvent) => {
     e.preventDefault();
 
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = normalizeEmail(email);
 
     if (!normalizedEmail) {
       setError("Vui lòng nhập email.");
@@ -667,7 +675,6 @@ export function ForgotPasswordPage() {
 
     try {
       await authApi.forgotPassword({ email: normalizedEmail });
-      setSent(true);
       navigate("/reset-password", {
         state: {
           email: normalizedEmail,
@@ -693,36 +700,27 @@ export function ForgotPasswordPage() {
         <p className="mt-2 text-muted">
           Nhập email trường để nhận mã OTP đặt lại mật khẩu.
         </p>
-        {sent ? (
-          <div className="card mt-7 p-7">
-            <CheckCircle2 className="h-10 w-10 text-emerald-600" />
-            <h2 className="mt-4 text-xl font-bold">Đã gửi email khôi phục</h2>
-            <p className="mt-2 text-sm text-muted">
-              Hãy kiểm tra hộp thư. Mã OTP có hiệu lực trong 10 phút.
+        <form onSubmit={submit} className="card mt-7 space-y-5 p-7">
+          <Field
+            label="Email trường"
+            placeholder="a.nv@university.edu.vn"
+            icon={Mail}
+            value={email}
+            onChange={(value) => {
+              setEmail(value);
+              setError("");
+            }}
+            inputMode="email"
+          />
+          {error && (
+            <p className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+              {error}
             </p>
-          </div>
-        ) : (
-          <form onSubmit={submit} className="card mt-7 space-y-5 p-7">
-            <Field
-              label="Email trường"
-              placeholder="a.nv@university.edu.vn"
-              icon={Mail}
-              value={email}
-              onChange={(value) => {
-                setEmail(value);
-                setError("");
-              }}
-            />
-            {error && (
-              <p className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
-                {error}
-              </p>
-            )}
-            <button disabled={loading} className="btn-primary w-full">
-              {loading ? "Đang gửi..." : "Gửi mã OTP khôi phục"}
-            </button>
-          </form>
-        )}
+          )}
+          <button disabled={loading} className="btn-primary w-full">
+            {loading ? "Đang gửi..." : "Gửi mã OTP"}
+          </button>
+        </form>
         <Link to="/login" className="btn-ghost mt-5">
           Quay lại đăng nhập
         </Link>
@@ -749,7 +747,7 @@ export function ResetPasswordPage() {
   const submit = async (e: FormEvent) => {
     e.preventDefault();
 
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = normalizeEmail(email);
     const normalizedOtp = otp.trim();
 
     if (!normalizedEmail) {
@@ -768,7 +766,7 @@ export function ResetPasswordPage() {
     }
 
     if (!OTP_PATTERN.test(normalizedOtp)) {
-      setError("OTP cần gồm đúng 6 chữ số.");
+      setError("Mã OTP cần gồm đúng 6 chữ số.");
       return;
     }
 
@@ -820,7 +818,7 @@ export function ResetPasswordPage() {
       <form onSubmit={submit} className="card w-full max-w-lg space-y-5 p-7">
         <h1 className="text-2xl font-extrabold">Đặt lại mật khẩu</h1>
         <p className="text-sm text-muted">
-          Nhập email, mã OTP 6 chữ số và mật khẩu mới tối thiểu 6 ký tự.
+          Nhập email, mã OTP 6 chữ số và mật khẩu mới của bạn.
         </p>
         {state.message && (
           <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
@@ -836,18 +834,19 @@ export function ResetPasswordPage() {
             setEmail(value);
             setError("");
           }}
+          inputMode="email"
         />
         <Field
           label="Mã OTP"
           placeholder="Nhập 6 chữ số"
           icon={ShieldCheck}
           value={otp}
-          maxLength={6}
-          inputMode="numeric"
           onChange={(value) => {
             setOtp(value.replace(/\D/g, "").slice(0, 6));
             setError("");
           }}
+          inputMode="numeric"
+          maxLength={6}
         />
         <Field
           label="Mật khẩu mới"

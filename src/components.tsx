@@ -171,8 +171,16 @@ function UserProfileMenu({
         aria-expanded={open}
         aria-label="Mở menu tài khoản"
       >
-        <span className="grid h-9 w-9 place-items-center rounded-full bg-primary text-sm font-bold text-white">
-          {displayInitials}
+        <span className="grid h-9 w-9 place-items-center overflow-hidden rounded-full bg-primary text-sm font-bold text-white">
+          {profile?.avatarUrl ? (
+            <img
+              src={profile.avatarUrl}
+              alt={displayName}
+              className="block h-full w-full object-cover"
+            />
+          ) : (
+            displayInitials
+          )}
         </span>
         <ChevronDown
           className={`h-4 w-4 text-slate-500 transition ${open ? "rotate-180" : ""}`}
@@ -898,13 +906,25 @@ export function EmptyState({
 }
 export function StatusBadge({ status }: { status: string }) {
   const s = status.toUpperCase();
+  const normalized = status
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase();
   const cls =
-    s.includes("ACTIVE") || s.includes("APPROVED") || s.includes("SUCCESS")
+    ["ACTIVE", "APPROVED", "SUCCESS", "CLUBADMIN", "CLUBMEMBER"].some(
+      (value) => normalized === value || normalized.includes(value),
+    )
       ? "status-active"
-      : s.includes("PENDING") || s.includes("DRAFT") || s.includes("CHỜ")
-        ? "status-pending"
-        : s.includes("REJECT") || s.includes("LOCK") || s.includes("CANCEL")
-          ? "status-danger"
+      : normalized === "INACTIVE" ||
+          normalized.includes("REJECT") ||
+          normalized.includes("LOCK") ||
+          normalized.includes("CANCEL") ||
+          normalized.includes("DELETED")
+        ? "status-danger"
+        : normalized.includes("PENDING") ||
+            normalized.includes("DRAFT") ||
+            normalized.includes("CHO")
+          ? "status-pending"
           : "status-info";
   return <span className={cls}>{status}</span>;
 }

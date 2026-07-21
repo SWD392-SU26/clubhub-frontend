@@ -1,4 +1,4 @@
-export type ClubRole = "Member" | "VicePresident" | "President" | "ClubAdmin";
+export type ClubRole = "ClubMember" | "ClubAdmin";
 
 export type MembershipStatus =
   | "Pending"
@@ -17,7 +17,7 @@ export type ClubCategory =
   | "Media"
   | "Entrepreneurship";
 
-export type ClubStatus = "Active" | "Hidden" | "Locked" | "Deleted";
+export type ClubStatus = "Active" | "Inactive" | "Lock" | "Deleted";
 
 export type ClubSummary = {
   id: string;

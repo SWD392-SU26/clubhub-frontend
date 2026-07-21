@@ -1,4 +1,8 @@
-export type SystemRole = "Student" | "UniversityAdmin";
+export type SystemRole =
+  | "Student"
+  | "ClubMember"
+  | "ClubAdmin"
+  | "UniversityAdmin";
 
 export type UserProfile = {
   id: string;
@@ -10,7 +14,7 @@ export type UserProfile = {
   avatarUrl?: string | null;
   role: SystemRole;
   systemRole?: SystemRole;
-  status?: string;
+  status?: "Active" | "Inactive" | "Lock" | "Deleted" | string;
   isEmailVerified?: boolean;
   createdAt: string;
 };
