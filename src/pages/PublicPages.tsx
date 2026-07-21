@@ -69,6 +69,10 @@ function getClubImage(club: ClubTileData) {
   return club.coverImageUrl || club.logoUrl || club.image || fallbackClubImage;
 }
 
+function getEventImage(event?: EventDto | null) {
+  return event?.imageUrl || images.students;
+}
+
 function isGuid(value?: string) {
   return Boolean(
     value?.match(
@@ -146,12 +150,20 @@ function PublicEventCard({
         to={`/events/${event.id}`}
         className="card flex gap-4 p-5 transition hover:-translate-y-0.5 hover:shadow-lift"
       >
-        <div className="grid h-16 w-16 shrink-0 place-items-center rounded-xl bg-primary-soft text-center text-sm font-extrabold text-primary">
-          {formatEventDate(event.startTime).slice(0, 2)}
-          <span className="block text-[10px]">
-            THÁNG {formatEventDate(event.startTime).slice(3, 5)}
-          </span>
-        </div>
+        {event.imageUrl ? (
+          <img
+            src={event.imageUrl}
+            alt={event.name}
+            className="h-16 w-16 shrink-0 rounded-xl object-cover"
+          />
+        ) : (
+          <div className="grid h-16 w-16 shrink-0 place-items-center rounded-xl bg-primary-soft text-center text-sm font-extrabold text-primary">
+            {formatEventDate(event.startTime).slice(0, 2)}
+            <span className="block text-[10px]">
+              THÁNG {formatEventDate(event.startTime).slice(3, 5)}
+            </span>
+          </div>
+        )}
         <div className="min-w-0">
           <h3 className="line-clamp-2 font-bold">{event.name}</h3>
           <p className="mt-1 text-sm text-muted">
@@ -172,7 +184,7 @@ function PublicEventCard({
       className="card overflow-hidden transition hover:-translate-y-1 hover:shadow-lift"
     >
       <img
-        src={images.students}
+        src={getEventImage(event)}
         className="h-44 w-full object-cover"
         alt={event.name}
       />
@@ -751,7 +763,7 @@ export function ClubDetailPage() {
         clubId: club.id,
         clubName: club.name,
         clubLogo: club.logoUrl,
-        roleInClub: "Member",
+        roleInClub: "ClubMember",
         status: "Pending",
         requestedAt: new Date().toISOString(),
         joinedAt: null,
@@ -838,17 +850,14 @@ export function ClubDetailPage() {
         ? "Đã gửi yêu cầu"
         : currentMembership?.status === "Approved"
           ? "Đã là thành viên"
-          : currentMembership?.status === "Cancelled"
-            ? "Đã rút đơn"
-            : joining
+          : joining
               ? "Đang gửi..."
               : "Gửi yêu cầu tham gia";
   const joinButtonDisabled =
     Boolean(club && !isGuid(club.id)) ||
     joining ||
     currentMembership?.status === "Pending" ||
-    currentMembership?.status === "Approved" ||
-    currentMembership?.status === "Cancelled";
+    currentMembership?.status === "Approved";
   const officers = club?.officers ?? [];
   const activeUpcomingEvents = upcomingEvents.filter(
     (event) => !["Completed", "Cancelled"].includes(event.status),
@@ -1114,11 +1123,11 @@ function membersPreview() {
     {
       name: "Nguyễn Văn A",
       code: "SE180001",
-      role: "President",
+      role: "ClubAdmin",
       status: "ACTIVE",
     },
-    { name: "Trần Thị B", code: "SE180112", role: "Member", status: "ACTIVE" },
-    { name: "Lê Minh C", code: "SE181230", role: "Member", status: "PENDING" },
+    { name: "Trần Thị B", code: "SE180112", role: "ClubMember", status: "ACTIVE" },
+    { name: "Lê Minh C", code: "SE181230", role: "ClubMember", status: "PENDING" },
   ];
 }
 export function EventsExplorePage() {
@@ -1577,6 +1586,14 @@ export function EventDetailPage() {
         >
           {message}
         </p>
+      )}
+
+      {event.imageUrl && (
+        <img
+          src={event.imageUrl}
+          alt={event.name}
+          className="mb-6 h-72 w-full rounded-2xl object-cover shadow-card"
+        />
       )}
 
       <div className="grid gap-6 lg:grid-cols-[1.4fr_.8fr]">

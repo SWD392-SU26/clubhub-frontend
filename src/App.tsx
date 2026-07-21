@@ -13,6 +13,7 @@ import {
   RegisterPage,
   ForgotPasswordPage,
   ResetPasswordPage,
+  VerifyEmailPage,
 } from "./pages/AuthPages";
 import {
   ClubDetailPage,
@@ -88,6 +89,7 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/login/compact" element={<LoginPage compact />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/verify-email" element={<VerifyEmailPage />} />
         </Route>
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />

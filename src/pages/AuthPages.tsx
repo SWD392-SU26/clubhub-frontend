@@ -16,7 +16,6 @@ import {
   Link,
   useLocation,
   useNavigate,
-  useSearchParams,
 } from "react-router-dom";
 import { AuthShell, Brand } from "../components";
 
@@ -24,9 +23,24 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const STUDENT_CODE_PATTERN = /^[A-Z]{2}\d{6}$/;
 const USERNAME_PATTERN = /^[A-Za-z0-9._-]{3,50}$/;
 const VIETNAM_PHONE_PATTERN = /^(0[35789]\d{8}|84[35789]\d{8})$/;
+const OTP_PATTERN = /^\d{6}$/;
 
 function normalizePhone(value: string) {
-  return value.trim().replace(/[\s.-]+/g, "").replace(/^\+84/, "84");
+  const normalized = value.trim().replace(/[\s.-]+/g, "");
+
+  if (normalized.startsWith("+84")) {
+    return `0${normalized.slice(3)}`;
+  }
+
+  if (normalized.startsWith("84")) {
+    return `0${normalized.slice(2)}`;
+  }
+
+  return normalized;
+}
+
+function normalizeEmail(value: string) {
+  return value.trim().toLowerCase();
 }
 
 function Field({
@@ -37,6 +51,8 @@ function Field({
   value,
   onChange,
   error,
+  maxLength,
+  inputMode,
 }: {
   label: string;
   type?: string;
@@ -45,6 +61,8 @@ function Field({
   value: string;
   onChange: (v: string) => void;
   error?: string;
+  maxLength?: number;
+  inputMode?: "none" | "text" | "tel" | "url" | "email" | "numeric" | "decimal" | "search";
 }) {
   const [show, setShow] = useState(false);
   const password = type === "password";
@@ -59,6 +77,8 @@ function Field({
           placeholder={placeholder}
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          maxLength={maxLength}
+          inputMode={inputMode}
         />
         {password && (
           <button
@@ -141,7 +161,8 @@ const [formError, setFormError] = useState("");
       "from" in location.state
         ? String((location.state as { from?: string }).from ?? "")
         : "";
-    const isUniversityAdmin = data.profile.systemRole === "UniversityAdmin";
+    const isUniversityAdmin =
+      (data.profile.role ?? data.profile.systemRole) === "UniversityAdmin";
     const memberships = isUniversityAdmin
       ? []
       : await membershipApi.getMyMemberships().catch(() => []);
@@ -288,7 +309,7 @@ export function RegisterPage() {
     const trimmedFullName = fullName.trim();
     const trimmedUsername = username.trim();
     const normalizedStudentCode = studentCode.trim().toUpperCase();
-    const trimmedEmail = email.trim();
+    const trimmedEmail = normalizeEmail(email);
     const normalizedPhone = normalizePhone(phone);
 
     if (!trimmedFullName) {
@@ -360,9 +381,12 @@ export function RegisterPage() {
         phone: normalizedPhone,
       });
 
-      navigate("/login", { 
+      navigate("/verify-email", {
         replace: true,
-        state: { message: "Đăng ký thành công! Vui lòng đăng nhập." },
+        state: {
+          email: trimmedEmail,
+          message: "Đăng ký thành công. Vui lòng nhập mã OTP đã gửi về email.",
+        },
       });
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Đăng ký thất bại.");
@@ -498,8 +522,135 @@ export function RegisterPage() {
     </AuthShell>
   );
 }
+
+export function VerifyEmailPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const state =
+    location.state && typeof location.state === "object"
+      ? (location.state as { email?: string; message?: string })
+      : {};
+  const [email, setEmail] = useState(state.email ?? "");
+  const [otp, setOtp] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<{
+    email?: string;
+    otp?: string;
+  }>({});
+  const [formError, setFormError] = useState("");
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+
+    const normalizedEmail = normalizeEmail(email);
+    const normalizedOtp = otp.trim();
+    const nextErrors: typeof fieldErrors = {};
+
+    if (!normalizedEmail) {
+      nextErrors.email = "Vui lòng nhập email.";
+    } else if (!EMAIL_PATTERN.test(normalizedEmail)) {
+      nextErrors.email = "Email không đúng định dạng.";
+    }
+
+    if (!normalizedOtp) {
+      nextErrors.otp = "Vui lòng nhập mã OTP.";
+    } else if (!OTP_PATTERN.test(normalizedOtp)) {
+      nextErrors.otp = "Mã OTP cần gồm đúng 6 chữ số.";
+    }
+
+    if (Object.keys(nextErrors).length > 0) {
+      setFieldErrors(nextErrors);
+      setFormError("");
+      return;
+    }
+
+    setFieldErrors({});
+    setFormError("");
+    setLoading(true);
+
+    try {
+      await authApi.verifyEmail({
+        email: normalizedEmail,
+        otp: normalizedOtp,
+      });
+
+      navigate("/login", {
+        replace: true,
+        state: {
+          message: "Xác thực email thành công. Vui lòng đăng nhập.",
+        },
+      });
+    } catch (err) {
+      setFormError(
+        err instanceof Error ? err.message : "Xác thực email thất bại.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <AuthShell headline="Xác thực tài khoản để bắt đầu tham gia CLB.">
+      <form onSubmit={submit} className="card w-full max-w-lg space-y-5 p-7">
+        <div className="grid h-14 w-14 place-items-center rounded-2xl bg-primary-soft text-primary">
+          <ShieldCheck />
+        </div>
+        <div>
+          <h1 className="text-2xl font-extrabold">Xác thực email</h1>
+          <p className="mt-2 text-sm text-muted">
+            Nhập mã OTP 6 chữ số đã được gửi về email trường của bạn.
+          </p>
+        </div>
+        {state.message && (
+          <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+            {state.message}
+          </p>
+        )}
+        <Field
+          label="Email trường"
+          placeholder="a.nv@university.edu.vn"
+          icon={Mail}
+          value={email}
+          onChange={(value) => {
+            setEmail(value);
+            setFieldErrors((prev) => ({ ...prev, email: undefined }));
+            setFormError("");
+          }}
+          error={fieldErrors.email}
+          inputMode="email"
+        />
+        <Field
+          label="Mã OTP"
+          placeholder="Nhập 6 chữ số"
+          icon={ShieldCheck}
+          value={otp}
+          onChange={(value) => {
+            setOtp(value.replace(/\D/g, "").slice(0, 6));
+            setFieldErrors((prev) => ({ ...prev, otp: undefined }));
+            setFormError("");
+          }}
+          error={fieldErrors.otp}
+          inputMode="numeric"
+          maxLength={6}
+        />
+        {formError && (
+          <p className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+            {formError}
+          </p>
+        )}
+        <button disabled={loading} className="btn-primary w-full">
+          {loading ? "Đang xác thực..." : "Xác thực tài khoản"}
+        </button>
+        <Link to="/login" className="btn-ghost w-full justify-center">
+          Quay lại đăng nhập
+        </Link>
+      </form>
+    </AuthShell>
+  );
+}
+
 export function ForgotPasswordPage() {
-  const [sent, setSent] = useState(false);
+  const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -507,8 +658,15 @@ export function ForgotPasswordPage() {
   const submit = async (e: FormEvent) => {
     e.preventDefault();
 
-    if (!email.trim()) {
+    const normalizedEmail = normalizeEmail(email);
+
+    if (!normalizedEmail) {
       setError("Vui lòng nhập email.");
+      return;
+    }
+
+    if (!EMAIL_PATTERN.test(normalizedEmail)) {
+      setError("Email không đúng định dạng.");
       return;
     }
 
@@ -516,8 +674,13 @@ export function ForgotPasswordPage() {
     setError("");
 
     try {
-      await authApi.forgotPassword({ email: email.trim() });
-      setSent(true);
+      await authApi.forgotPassword({ email: normalizedEmail });
+      navigate("/reset-password", {
+        state: {
+          email: normalizedEmail,
+          message: "Mã OTP đặt lại mật khẩu đã được gửi về email.",
+        },
+      });
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Gửi email khôi phục thất bại.",
@@ -535,38 +698,29 @@ export function ForgotPasswordPage() {
         </div>
         <h1 className="mt-5 text-3xl font-extrabold">Quên mật khẩu?</h1>
         <p className="mt-2 text-muted">
-          Nhập email trường để nhận liên kết đặt lại mật khẩu.
+          Nhập email trường để nhận mã OTP đặt lại mật khẩu.
         </p>
-        {sent ? (
-          <div className="card mt-7 p-7">
-            <CheckCircle2 className="h-10 w-10 text-emerald-600" />
-            <h2 className="mt-4 text-xl font-bold">Đã gửi email khôi phục</h2>
-            <p className="mt-2 text-sm text-muted">
-              Hãy kiểm tra hộp thư. Liên kết có hiệu lực trong 15 phút.
+        <form onSubmit={submit} className="card mt-7 space-y-5 p-7">
+          <Field
+            label="Email trường"
+            placeholder="a.nv@university.edu.vn"
+            icon={Mail}
+            value={email}
+            onChange={(value) => {
+              setEmail(value);
+              setError("");
+            }}
+            inputMode="email"
+          />
+          {error && (
+            <p className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+              {error}
             </p>
-          </div>
-        ) : (
-          <form onSubmit={submit} className="card mt-7 space-y-5 p-7">
-            <Field
-              label="Email trường"
-              placeholder="a.nv@university.edu.vn"
-              icon={Mail}
-              value={email}
-              onChange={(value) => {
-                setEmail(value);
-                setError("");
-              }}
-            />
-            {error && (
-              <p className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
-                {error}
-              </p>
-            )}
-            <button disabled={loading} className="btn-primary w-full">
-              {loading ? "Đang gửi..." : "Gửi liên kết khôi phục"}
-            </button>
-          </form>
-        )}
+          )}
+          <button disabled={loading} className="btn-primary w-full">
+            {loading ? "Đang gửi..." : "Gửi mã OTP"}
+          </button>
+        </form>
         <Link to="/login" className="btn-ghost mt-5">
           Quay lại đăng nhập
         </Link>
@@ -577,9 +731,14 @@ export function ForgotPasswordPage() {
 
 export function ResetPasswordPage() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const token = searchParams.get("token") ?? "";
+  const location = useLocation();
+  const state =
+    location.state && typeof location.state === "object"
+      ? (location.state as { email?: string; message?: string })
+      : {};
 
+  const [email, setEmail] = useState(state.email ?? "");
+  const [otp, setOtp] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -588,8 +747,26 @@ export function ResetPasswordPage() {
   const submit = async (e: FormEvent) => {
     e.preventDefault();
 
-    if (!token) {
-      setError("Liên kết đặt lại mật khẩu không hợp lệ.");
+    const normalizedEmail = normalizeEmail(email);
+    const normalizedOtp = otp.trim();
+
+    if (!normalizedEmail) {
+      setError("Vui lòng nhập email.");
+      return;
+    }
+
+    if (!EMAIL_PATTERN.test(normalizedEmail)) {
+      setError("Email không đúng định dạng.");
+      return;
+    }
+
+    if (!normalizedOtp) {
+      setError("Vui lòng nhập mã OTP.");
+      return;
+    }
+
+    if (!OTP_PATTERN.test(normalizedOtp)) {
+      setError("Mã OTP cần gồm đúng 6 chữ số.");
       return;
     }
 
@@ -618,7 +795,8 @@ export function ResetPasswordPage() {
 
     try {
       await authApi.resetPassword({
-        token,
+        email: normalizedEmail,
+        otp: normalizedOtp,
         newPassword: password,
       });
 
@@ -640,8 +818,36 @@ export function ResetPasswordPage() {
       <form onSubmit={submit} className="card w-full max-w-lg space-y-5 p-7">
         <h1 className="text-2xl font-extrabold">Đặt lại mật khẩu</h1>
         <p className="text-sm text-muted">
-          Mật khẩu cần tối thiểu 6 ký tự, gồm chữ hoa và ký tự đặc biệt.
+          Nhập email, mã OTP 6 chữ số và mật khẩu mới của bạn.
         </p>
+        {state.message && (
+          <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+            {state.message}
+          </p>
+        )}
+        <Field
+          label="Email trường"
+          placeholder="a.nv@university.edu.vn"
+          icon={Mail}
+          value={email}
+          onChange={(value) => {
+            setEmail(value);
+            setError("");
+          }}
+          inputMode="email"
+        />
+        <Field
+          label="Mã OTP"
+          placeholder="Nhập 6 chữ số"
+          icon={ShieldCheck}
+          value={otp}
+          onChange={(value) => {
+            setOtp(value.replace(/\D/g, "").slice(0, 6));
+            setError("");
+          }}
+          inputMode="numeric"
+          maxLength={6}
+        />
         <Field
           label="Mật khẩu mới"
           type="password"

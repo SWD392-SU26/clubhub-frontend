@@ -27,6 +27,7 @@ import { membershipApi } from "../api/membershipApi";
 import { notificationApi } from "../api/notificationApi";
 import { pointApi } from "../api/pointApi";
 import { proposalApi } from "../api/proposalApi";
+import { storageApi } from "../api/storageApi";
 import type { UserProfile } from "../types/auth";
 import type { ClubCategory, ClubSummary, MyMembership } from "../types/club";
 import type { EventDto, EventRegistration } from "../types/event";
@@ -89,12 +90,24 @@ function getAccountPaths(pathname: string) {
 function getRoleLabel(profile?: UserProfile | null, pathname = "") {
   if (pathname.startsWith("/club-admin")) return "Club Admin";
   if (pathname.startsWith("/system-admin")) return "University Admin";
-  if (profile?.systemRole === "UniversityAdmin") return "University Admin";
+  if ((profile?.role ?? profile?.systemRole) === "UniversityAdmin") {
+    return "University Admin";
+  }
+  if ((profile?.role ?? profile?.systemRole) === "ClubAdmin") {
+    return "Club Admin";
+  }
+  if ((profile?.role ?? profile?.systemRole) === "ClubMember") {
+    return "Club Member";
+  }
   return "Student";
 }
 
 function getClubImage(club: ClubSummary) {
   return club.coverImageUrl || club.logoUrl || images.code;
+}
+
+function getEventImage(event?: EventDto | null, registration?: EventRegistration) {
+  return event?.imageUrl || registration?.eventImageUrl || images.students;
 }
 
 const clubCategoryOptions: Array<{ label: string; value?: ClubCategory }> = [
@@ -177,6 +190,7 @@ type ProposalDraft = {
 
 const PROPOSAL_DRAFT_KEY = "clubhub_proposal_draft";
 const PROPOSAL_RESUBMIT_KEY = "clubhub_proposal_resubmit_id";
+const PROPOSAL_EDIT_KEY = "clubhub_proposal_edit_id";
 
 const emptyProposalDraft: ProposalDraft = {
   clubName: "",
@@ -280,7 +294,7 @@ function toSubmitProposalRequest(draft: ProposalDraft): SubmitProposalRequest {
 function isClubManager(membership?: MyMembership) {
   return (
     membership?.status === "Approved" &&
-    ["ClubAdmin", "President", "VicePresident"].includes(membership.roleInClub)
+    membership.roleInClub === "ClubAdmin"
   );
 }
 
@@ -647,7 +661,7 @@ export function StudentDashboard() {
                         <div>
                           <h3 className="font-bold">{club.name}</h3>
                           <p className="text-sm text-muted">
-                            {membership?.roleInClub ?? "Member"}
+                            {membership?.roleInClub ?? "ClubMember"}
                           </p>
                           <div className="mt-3 text-sm text-muted">
                             {club.memberCount} thành viên · {club.category}
@@ -679,9 +693,17 @@ export function StudentDashboard() {
                   key={event.id}
                   className="mb-3 flex items-center gap-4 rounded-xl border p-4 hover:bg-primary-soft"
                 >
-                  <div className="grid h-14 w-14 place-items-center rounded-xl bg-sky-100 font-extrabold text-sky-700">
-                    {formatShortDate(event.startTime)}
-                  </div>
+                  {event.imageUrl ? (
+                    <img
+                      src={event.imageUrl}
+                      alt={event.name}
+                      className="h-14 w-14 shrink-0 rounded-xl object-cover"
+                    />
+                  ) : (
+                    <div className="grid h-14 w-14 place-items-center rounded-xl bg-sky-100 font-extrabold text-sky-700">
+                      {formatShortDate(event.startTime)}
+                    </div>
+                  )}
                   <div>
                     <div className="font-bold">{event.name}</div>
                     <div className="mt-1 text-sm text-muted">
@@ -930,6 +952,7 @@ export function EditProfilePage() {
   const [avatarUrl, setAvatarUrl] = useState(profile?.avatarUrl ?? "");
   const [loading, setLoading] = useState(!profile);
   const [saving, setSaving] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -1009,6 +1032,36 @@ export function EditProfilePage() {
     }
   };
 
+  const uploadAvatar = async (file?: File) => {
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setError("Vui lòng chọn file ảnh.");
+      setSuccess("");
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Ảnh đại diện không được vượt quá 5MB.");
+      setSuccess("");
+      return;
+    }
+
+    setUploadingAvatar(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const result = await storageApi.uploadImage(file, "avatars");
+      setAvatarUrl(result.url);
+      setSuccess("Upload ảnh thành công. Nhấn Lưu thay đổi để cập nhật hồ sơ.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload ảnh thất bại.");
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
   const initials = getInitials(fullName || profile?.username);
 
   return (
@@ -1018,28 +1071,62 @@ export function EditProfilePage() {
         description="Cập nhật thông tin cá nhân và cách bạn xuất hiện trong cộng đồng ClubHub."
       />
       <form onSubmit={submit} className="space-y-6">
-        <section className="card flex flex-col items-center gap-5 p-6 sm:flex-row">
-          <div className="relative grid h-28 w-28 place-items-center overflow-hidden rounded-full bg-ink text-3xl font-bold text-white">
-            {avatarUrl ? (
-              <img
-                src={avatarUrl}
-                alt={fullName}
-                className="h-full w-full object-cover"
+          <section className="card flex flex-col items-center gap-5 p-6 sm:flex-row">
+            <div className="relative h-28 w-28 shrink-0">
+              <div className="grid h-full w-full place-items-center overflow-hidden rounded-full bg-ink text-xl font-bold text-white ring-1 ring-slate-200">
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt={fullName}
+                  className="block h-full w-full object-cover"
+                />
+              ) : (
+                initials
+              )}
+              </div>
+              <label className="absolute bottom-1 right-1 grid h-8 w-8 cursor-pointer place-items-center rounded-full bg-primary text-white shadow-card ring-[3px] ring-white transition hover:bg-primary-dark">
+                <Camera className="h-3.5 w-3.5" />
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                className="hidden"
+                disabled={uploadingAvatar}
+                onChange={(e) => {
+                  void uploadAvatar(e.target.files?.[0]);
+                  e.target.value = "";
+                }}
               />
-            ) : (
-              initials
-            )}
-            <span className="absolute bottom-0 right-0 grid h-10 w-10 place-items-center rounded-full bg-primary text-white">
-              <Camera className="h-5 w-5" />
-            </span>
+            </label>
           </div>
           <div className="w-full">
-            <h2 className="text-xl font-bold">Ảnh đại diện</h2>
-            <p className="mt-1 text-sm text-muted">
-              Dán URL ảnh đại diện. Sau này có thể thay bằng upload file.
-            </p>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-xl font-bold">Ảnh đại diện</h2>
+                <p className="mt-1 text-sm text-muted">
+                  Bấm biểu tượng camera để upload ảnh, hoặc dán URL ảnh bên dưới.
+                </p>
+              </div>
+              {avatarUrl && (
+                <button
+                  type="button"
+                  className="btn-ghost min-h-0 px-3 py-2 text-sm"
+                  onClick={() => {
+                    setAvatarUrl("");
+                    setError("");
+                    setSuccess("");
+                  }}
+                >
+                  Xóa ảnh
+                </button>
+              )}
+            </div>
+            {uploadingAvatar && (
+              <p className="mt-3 rounded-xl bg-primary-soft px-4 py-3 text-sm font-semibold text-primary">
+                Đang upload ảnh đại diện...
+              </p>
+            )}
             <input
-              className="input mt-4"
+              className="input mt-3"
               placeholder="https://..."
               value={avatarUrl}
               onChange={(e) => {
@@ -1676,7 +1763,7 @@ export function MyClubsPage() {
     if (membershipFilter === "available") {
       return (
         !membership ||
-        ["Rejected", "Left"].includes(membership.status)
+        ["Rejected", "Cancelled", "Left"].includes(membership.status)
       );
     }
 
@@ -1730,7 +1817,7 @@ export function MyClubsPage() {
         clubId: club.id,
         clubName: club.name,
         clubLogo: club.logoUrl,
-        roleInClub: "Member",
+        roleInClub: "ClubMember",
         status: "Pending",
         requestedAt: new Date().toISOString(),
       };
@@ -1919,7 +2006,7 @@ export function MyClubsPage() {
             const membership = getMembership(club.id);
             const canJoin =
               !membership ||
-              ["Rejected", "Left"].includes(membership.status);
+              ["Rejected", "Cancelled", "Left"].includes(membership.status);
             const manager = isClubManager(membership);
 
             return (
@@ -2203,15 +2290,24 @@ export function MyEventsPage() {
             const detail = registration.detail;
             const eventDate = detail?.startTime ?? registration.registeredAt;
             const canCancel = canCancelRegistration(registration);
+            const imageUrl = getEventImage(detail, registration);
 
             return (
               <section
                 className="card flex flex-col gap-4 p-5 lg:flex-row lg:items-center"
                 key={registration.id}
               >
-                <div className="grid h-16 w-16 shrink-0 place-items-center rounded-xl bg-primary-soft text-center font-bold text-primary">
-                  {formatShortDate(eventDate)}
-                </div>
+                {imageUrl ? (
+                  <img
+                    src={imageUrl}
+                    alt={registration.eventName}
+                    className="h-20 w-full rounded-xl object-cover sm:w-28 lg:h-16 lg:w-20"
+                  />
+                ) : (
+                  <div className="grid h-16 w-16 shrink-0 place-items-center rounded-xl bg-primary-soft text-center font-bold text-primary">
+                    {formatShortDate(eventDate)}
+                  </div>
+                )}
 
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
@@ -2466,6 +2562,7 @@ export function ClubProposalsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [startingResubmitId, setStartingResubmitId] = useState("");
+  const [startingEditId, setStartingEditId] = useState("");
 
   useEffect(() => {
     let ignore = false;
@@ -2539,6 +2636,35 @@ export function ClubProposalsPage() {
     }
   };
 
+  const startEdit = async (proposal: ProposalSummary) => {
+    if (proposal.status !== "Pending") return;
+
+    setStartingEditId(proposal.id);
+    setError("");
+
+    try {
+      const detail = await proposalApi.getProposalById(proposal.id);
+
+      if (detail.status !== "Pending" && detail.status !== "NeedsRevision") {
+        setError("Chỉ có thể chỉnh sửa hồ sơ đang chờ duyệt hoặc cần chỉnh sửa.");
+        return;
+      }
+
+      sessionStorage.setItem(PROPOSAL_EDIT_KEY, detail.id);
+      sessionStorage.removeItem(PROPOSAL_RESUBMIT_KEY);
+      writeProposalDraft(proposalToDraft(detail, profile));
+      navigate(`/club-proposals/new/step-1?edit=${detail.id}`);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Không tải được hồ sơ cần chỉnh sửa.",
+      );
+    } finally {
+      setStartingEditId("");
+    }
+  };
+
   return (
     <main className="page-shell">
       <PageTitle
@@ -2548,7 +2674,11 @@ export function ClubProposalsPage() {
           <Link
             to="/club-proposals/new/step-1"
             className="btn-primary"
-            onClick={() => sessionStorage.removeItem(PROPOSAL_DRAFT_KEY)}
+            onClick={() => {
+              sessionStorage.removeItem(PROPOSAL_DRAFT_KEY);
+              sessionStorage.removeItem(PROPOSAL_RESUBMIT_KEY);
+              sessionStorage.removeItem(PROPOSAL_EDIT_KEY);
+            }}
           >
             <PlusCircle className="h-4 w-4" />
             Tạo đề xuất mới
@@ -2625,6 +2755,18 @@ export function ClubProposalsPage() {
                     {startingResubmitId === proposal.id
                       ? "Đang mở..."
                       : "Nộp lại"}
+                  </button>
+                )}
+                {proposal.status === "Pending" && (
+                  <button
+                    type="button"
+                    onClick={() => startEdit(proposal)}
+                    disabled={startingEditId === proposal.id}
+                    className="btn-primary"
+                  >
+                    {startingEditId === proposal.id
+                      ? "Đang mở..."
+                      : "Chỉnh sửa"}
                   </button>
                 )}
               </div>,
@@ -2706,11 +2848,20 @@ export function ClubProposalDetailPage() {
   }
 
   const canResubmit = proposal.status === "NeedsRevision";
+  const canEdit = proposal.status === "Pending";
 
   const startResubmit = () => {
     sessionStorage.setItem(PROPOSAL_RESUBMIT_KEY, proposal.id);
+    sessionStorage.removeItem(PROPOSAL_EDIT_KEY);
     writeProposalDraft(proposalToDraft(proposal, profile));
     navigate(`/club-proposals/new/step-1?resubmit=${proposal.id}`);
+  };
+
+  const startEdit = () => {
+    sessionStorage.setItem(PROPOSAL_EDIT_KEY, proposal.id);
+    sessionStorage.removeItem(PROPOSAL_RESUBMIT_KEY);
+    writeProposalDraft(proposalToDraft(proposal, profile));
+    navigate(`/club-proposals/new/step-1?edit=${proposal.id}`);
   };
 
   return (
@@ -2728,6 +2879,12 @@ export function ClubProposalDetailPage() {
               <button type="button" onClick={startResubmit} className="btn-primary">
                 <Edit3 className="h-4 w-4" />
                 Chỉnh sửa & nộp lại
+              </button>
+            )}
+            {canEdit && (
+              <button type="button" onClick={startEdit} className="btn-primary">
+                <Edit3 className="h-4 w-4" />
+                Chỉnh sửa hồ sơ
               </button>
             )}
           </>
@@ -2828,8 +2985,14 @@ export function ProposalStepPage({ step }: { step: number }) {
   const profile = useCurrentProfile();
   const searchParams = new URLSearchParams(location.search);
   const resubmitId = searchParams.get("resubmit") || "";
-  const resubmitQuery = resubmitId ? `?resubmit=${resubmitId}` : "";
+  const editId = searchParams.get("edit") || "";
+  const proposalModeQuery = resubmitId
+    ? `?resubmit=${resubmitId}`
+    : editId
+      ? `?edit=${editId}`
+      : "";
   const isResubmitting = Boolean(resubmitId);
+  const isEditing = Boolean(editId);
   const [draft, setDraft] = useState<ProposalDraft>(() => {
     const storedDraft = readProposalDraft();
 
@@ -2846,10 +3009,13 @@ export function ProposalStepPage({ step }: { step: number }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [draftLoading, setDraftLoading] = useState(() => {
-    if (!resubmitId) return false;
+    const activeProposalId = resubmitId || editId;
 
+    if (!activeProposalId) return false;
+
+    const activeKey = resubmitId ? PROPOSAL_RESUBMIT_KEY : PROPOSAL_EDIT_KEY;
     return (
-      sessionStorage.getItem(PROPOSAL_RESUBMIT_KEY) !== resubmitId ||
+      sessionStorage.getItem(activeKey) !== activeProposalId ||
       !sessionStorage.getItem(PROPOSAL_DRAFT_KEY)
     );
   });
@@ -2863,46 +3029,55 @@ export function ProposalStepPage({ step }: { step: number }) {
   ];
 
   useEffect(() => {
-    if (!resubmitId) {
+    const activeProposalId = resubmitId || editId;
+    const activeKey = resubmitId ? PROPOSAL_RESUBMIT_KEY : PROPOSAL_EDIT_KEY;
+
+    if (!activeProposalId) {
       sessionStorage.removeItem(PROPOSAL_RESUBMIT_KEY);
+      sessionStorage.removeItem(PROPOSAL_EDIT_KEY);
       setDraftLoading(false);
       return;
     }
 
-    const storedResubmitId = sessionStorage.getItem(PROPOSAL_RESUBMIT_KEY);
+    const storedProposalId = sessionStorage.getItem(activeKey);
     const storedDraft = sessionStorage.getItem(PROPOSAL_DRAFT_KEY);
 
-    if (storedResubmitId === resubmitId && storedDraft) {
+    if (storedProposalId === activeProposalId && storedDraft) {
       setDraftLoading(false);
       return;
     }
 
     let ignore = false;
 
-    async function loadProposalForResubmit() {
+    async function loadProposalForEdit() {
       setDraftLoading(true);
       setError("");
 
       try {
-        const proposal = await proposalApi.getProposalById(resubmitId);
+        const proposal = await proposalApi.getProposalById(activeProposalId);
 
         if (ignore) return;
 
-        if (proposal.status !== "NeedsRevision") {
+        if (resubmitId && proposal.status !== "NeedsRevision") {
           setError("Chỉ có thể nộp lại hồ sơ khi được yêu cầu chỉnh sửa.");
+          return;
+        }
+
+        if (editId && proposal.status !== "Pending" && proposal.status !== "NeedsRevision") {
+          setError("Chỉ có thể chỉnh sửa hồ sơ đang chờ duyệt hoặc cần chỉnh sửa.");
           return;
         }
 
         const nextDraft = proposalToDraft(proposal, profile);
         setDraft(nextDraft);
         writeProposalDraft(nextDraft);
-        sessionStorage.setItem(PROPOSAL_RESUBMIT_KEY, resubmitId);
+        sessionStorage.setItem(activeKey, activeProposalId);
       } catch (err) {
         if (!ignore) {
           setError(
             err instanceof Error
               ? err.message
-              : "Không tải được hồ sơ cần nộp lại.",
+              : "Không tải được hồ sơ cần chỉnh sửa.",
           );
         }
       } finally {
@@ -2912,16 +3087,17 @@ export function ProposalStepPage({ step }: { step: number }) {
       }
     }
 
-    loadProposalForResubmit();
+    loadProposalForEdit();
 
     return () => {
       ignore = true;
     };
   }, [
-    resubmitId,
+    editId,
     profile?.email,
     profile?.fullName,
     profile?.phone,
+    resubmitId,
     profile?.studentCode,
     profile?.username,
   ]);
@@ -2967,7 +3143,7 @@ export function ProposalStepPage({ step }: { step: number }) {
     writeProposalDraft(draft);
 
     if (step < 5) {
-      navigate(`/club-proposals/new/step-${step + 1}${resubmitQuery}`);
+      navigate(`/club-proposals/new/step-${step + 1}${proposalModeQuery}`);
       return;
     }
 
@@ -2979,12 +3155,15 @@ export function ProposalStepPage({ step }: { step: number }) {
 
       if (resubmitId) {
         await proposalApi.resubmitProposal(resubmitId, payload);
+      } else if (editId) {
+        await proposalApi.updateProposal(editId, payload);
       } else {
         await proposalApi.submitProposal(payload);
       }
 
       sessionStorage.removeItem(PROPOSAL_DRAFT_KEY);
       sessionStorage.removeItem(PROPOSAL_RESUBMIT_KEY);
+      sessionStorage.removeItem(PROPOSAL_EDIT_KEY);
       navigate("/club-proposals", { replace: true });
     } catch (err) {
       setError(
@@ -2992,6 +3171,8 @@ export function ProposalStepPage({ step }: { step: number }) {
           ? err.message
           : isResubmitting
             ? "Nộp lại đề xuất thất bại."
+            : isEditing
+              ? "Cập nhật đề xuất thất bại."
             : "Gửi đề xuất thất bại.",
       );
     } finally {
@@ -3003,7 +3184,7 @@ export function ProposalStepPage({ step }: { step: number }) {
     return (
       <main className="page-shell max-w-5xl">
         <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-muted">
-          Đang tải hồ sơ cần nộp lại...
+          Đang tải hồ sơ cần chỉnh sửa...
         </p>
       </main>
     );
@@ -3012,11 +3193,13 @@ export function ProposalStepPage({ step }: { step: number }) {
   return (
     <main className="page-shell max-w-5xl">
       <PageTitle
-        eyebrow={`${isResubmitting ? "Nộp lại" : "Bước"} ${step}/5`}
+        eyebrow={`${isResubmitting ? "Nộp lại" : isEditing ? "Chỉnh sửa" : "Bước"} ${step}/5`}
         title={titles[step - 1]}
         description={
           isResubmitting
             ? "Cập nhật hồ sơ theo phản hồi của ban quản lý rồi nộp lại để xét duyệt."
+            : isEditing
+              ? "Chỉnh sửa thông tin hồ sơ đang chờ duyệt rồi lưu cập nhật."
             : "Hoàn thiện hồ sơ đề xuất thành lập CLB để gửi ban quản lý xét duyệt."
         }
       />
@@ -3231,7 +3414,7 @@ export function ProposalStepPage({ step }: { step: number }) {
           <Link
             to={
               step > 1
-                ? `/club-proposals/new/step-${step - 1}${resubmitQuery}`
+                ? `/club-proposals/new/step-${step - 1}${proposalModeQuery}`
                 : "/club-proposals"
             }
             className="btn-secondary"
@@ -3247,11 +3430,15 @@ export function ProposalStepPage({ step }: { step: number }) {
             {loading
               ? isResubmitting
                 ? "Đang nộp lại..."
+                : isEditing
+                  ? "Đang lưu..."
                 : "Đang gửi..."
               : step < 5
                 ? "Tiếp theo"
                 : isResubmitting
                   ? "Nộp lại đề xuất"
+                  : isEditing
+                    ? "Lưu cập nhật"
                   : "Gửi đề xuất"}
             <Send className="h-4 w-4" />
           </button>

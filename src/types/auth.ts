@@ -1,4 +1,8 @@
-export type SystemRole = "Student" | "UniversityAdmin";
+export type SystemRole =
+  | "Student"
+  | "ClubMember"
+  | "ClubAdmin"
+  | "UniversityAdmin";
 
 export type UserProfile = {
   id: string;
@@ -8,7 +12,10 @@ export type UserProfile = {
   studentCode?: string | null;
   phone?: string | null;
   avatarUrl?: string | null;
-  systemRole: SystemRole;
+  role: SystemRole;
+  systemRole?: SystemRole;
+  status?: "Active" | "Inactive" | "Lock" | "Deleted" | string;
+  isEmailVerified?: boolean;
   createdAt: string;
 };
 
@@ -40,8 +47,14 @@ export type ForgotPasswordRequest = {
   email: string;
 };
 
+export type VerifyOtpRequest = {
+  email: string;
+  otp: string;
+};
+
 export type ResetPasswordRequest = {
-  token: string;
+  email: string;
+  otp: string;
   newPassword: string;
 };
 

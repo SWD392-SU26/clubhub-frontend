@@ -4,10 +4,20 @@ const ACCESS_TOKEN_KEY = "clubhub_access_token";
 const REFRESH_TOKEN_KEY = "clubhub_refresh_token";
 const PROFILE_KEY = "clubhub_profile";
 
+function normalizeProfile(profile: UserProfile): UserProfile {
+  const role = profile.role ?? profile.systemRole ?? "Student";
+
+  return {
+    ...profile,
+    role,
+    systemRole: role,
+  };
+}
+
 export function setAuthSession(data: LoginResponse) {
   localStorage.setItem(ACCESS_TOKEN_KEY, data.accessToken);
   localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
-  localStorage.setItem(PROFILE_KEY, JSON.stringify(data.profile));
+  localStorage.setItem(PROFILE_KEY, JSON.stringify(normalizeProfile(data.profile)));
   window.dispatchEvent(new Event("clubhub_profile_updated"));
 }
 
@@ -30,7 +40,7 @@ export function getProfile(): UserProfile | null {
   if (!raw) return null;
 
   try {
-    return JSON.parse(raw) as UserProfile;
+    return normalizeProfile(JSON.parse(raw) as UserProfile);
   } catch {
     return null;
   }
@@ -48,6 +58,6 @@ export function clearAuthSession() {
 }
 
 export function setProfile(profile: UserProfile) {
-  localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+  localStorage.setItem(PROFILE_KEY, JSON.stringify(normalizeProfile(profile)));
   window.dispatchEvent(new Event("clubhub_profile_updated"));
 }

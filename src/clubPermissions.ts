@@ -3,8 +3,7 @@ import type { MyMembership } from "./types/club";
 export function isClubAdminMembership(membership: MyMembership) {
   return (
     membership.status === "Approved" &&
-    (membership.roleInClub === "ClubAdmin" ||
-      membership.roleInClub === "President")
+    membership.roleInClub === "ClubAdmin"
   );
 }
 
