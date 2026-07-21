@@ -363,7 +363,7 @@ type MyEventViewModel = EventRegistration & {
 async function loadMyEventViewModels(): Promise<MyEventViewModel[]> {
   const data = await eventApi.getMyEvents();
 
-  return Promise.all(
+  const registrations = await Promise.all(
     data.map(async (registration) => ({
       ...registration,
       detail: await eventApi
@@ -371,6 +371,21 @@ async function loadMyEventViewModels(): Promise<MyEventViewModel[]> {
         .catch(() => null),
     })),
   );
+
+  return registrations.sort((first, second) => {
+    const firstTime = new Date(
+      first.detail?.startTime ?? first.registeredAt,
+    ).getTime();
+    const secondTime = new Date(
+      second.detail?.startTime ?? second.registeredAt,
+    ).getTime();
+
+    if (Number.isNaN(firstTime) && Number.isNaN(secondTime)) return 0;
+    if (Number.isNaN(firstTime)) return 1;
+    if (Number.isNaN(secondTime)) return -1;
+
+    return firstTime - secondTime;
+  });
 }
 
 export function StudentDashboard() {
@@ -2203,6 +2218,20 @@ export function MyEventsPage() {
             const detail = registration.detail;
             const eventDate = detail?.startTime ?? registration.registeredAt;
             const canCancel = canCancelRegistration(registration);
+            const canFeedback =
+              registration.isCheckedIn && detail?.status === "Completed";
+            const capacityText =
+              detail?.capacity && detail.capacity > 0
+                ? `${detail.registeredCount}/${detail.capacity} người đăng ký`
+                : detail
+                  ? `${detail.registeredCount} người đăng ký`
+                  : "Chưa cập nhật";
+            const checkInText = registration.checkInTime
+              ? `${formatFullDate(registration.checkInTime)} · ${formatTimeRange(
+                  registration.checkInTime,
+                  null,
+                )}`
+              : "Chưa check-in";
 
             return (
               <section
@@ -2234,10 +2263,12 @@ export function MyEventsPage() {
                       {formatTimeRange(detail?.startTime, detail?.endTime)}
                     </span>
                     <span>Địa điểm: {detail?.location || "Chưa cập nhật"}</span>
+                    <span>Số lượng: {capacityText}</span>
                     <span>
                       Đăng ký lúc{" "}
                       {formatTimeRange(registration.registeredAt, null)}
                     </span>
+                    <span>Check-in: {checkInText}</span>
                   </div>
                 </div>
 
@@ -2259,6 +2290,14 @@ export function MyEventsPage() {
                         ? "Đang hủy..."
                         : "Hủy đăng ký"}
                     </button>
+                  )}
+                  {canFeedback && (
+                    <Link
+                      to={`/my-events/${registration.eventId}`}
+                      className="btn-primary"
+                    >
+                      Feedback
+                    </Link>
                   )}
                 </div>
               </section>

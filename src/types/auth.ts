@@ -8,7 +8,10 @@ export type UserProfile = {
   studentCode?: string | null;
   phone?: string | null;
   avatarUrl?: string | null;
-  systemRole: SystemRole;
+  role: SystemRole;
+  systemRole?: SystemRole;
+  status?: string;
+  isEmailVerified?: boolean;
   createdAt: string;
 };
 
@@ -40,8 +43,14 @@ export type ForgotPasswordRequest = {
   email: string;
 };
 
+export type VerifyOtpRequest = {
+  email: string;
+  otp: string;
+};
+
 export type ResetPasswordRequest = {
-  token: string;
+  email: string;
+  otp: string;
   newPassword: string;
 };
 
