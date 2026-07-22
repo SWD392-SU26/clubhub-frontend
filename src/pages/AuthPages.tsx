@@ -131,19 +131,20 @@ export function LoginPage({ compact = false }: { compact?: boolean }) {
           "from" in location.state
           ? String((location.state as { from?: string }).from ?? "")
           : "";
-      const isUniversityAdmin = data.profile.systemRole === "UniversityAdmin";
+      const isUniversityAdmin =
+        (data.profile.role ?? data.profile.systemRole) === "UniversityAdmin";
       const memberships = await membershipApi.getMyMemberships().catch(() => []);
       const hasClubAdminAccess = hasClubAdminPermission(memberships);
-      const defaultPath = hasClubAdminAccess
-        ? "/club-admin"
-        : isUniversityAdmin
-          ? "/system-admin"
+      const defaultPath = isUniversityAdmin
+        ? "/system-admin"
+        : hasClubAdminAccess
+          ? "/club-admin"
           : "/dashboard";
       const canUseRequestedPath =
         requestedPath.startsWith("/") &&
         !requestedPath.startsWith("/login") &&
         (requestedPath.startsWith("/club-admin")
-          ? hasClubAdminAccess
+          ? !isUniversityAdmin && hasClubAdminAccess
           : requestedPath.startsWith("/system-admin")
             ? isUniversityAdmin
             : !isUniversityAdmin);
