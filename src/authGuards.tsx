@@ -48,6 +48,11 @@ export function RequireGuest() {
       try {
         const memberships = await membershipApi.getMyMemberships();
         if (!ignore) {
+          if (profile?.systemRole === "UniversityAdmin") {
+            setHomePath("/system-admin");
+            return;
+          }
+
           setHomePath(
             hasClubAdminPermission(memberships)
               ? "/club-admin"
@@ -95,6 +100,11 @@ export function RequireGuestLanding() {
       try {
         const memberships = await membershipApi.getMyMemberships();
         if (!ignore) {
+          if (profile?.systemRole === "UniversityAdmin") {
+            setHomePath("/system-admin");
+            return;
+          }
+
           const hasClubAdminAccess = hasClubAdminPermission(memberships);
           setHomePath(
             hasClubAdminAccess
