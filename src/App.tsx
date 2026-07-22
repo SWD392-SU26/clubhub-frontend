@@ -39,23 +39,8 @@ import {
   StudentDashboard,
 } from "./pages/StudentPages";
 import {
-  CancelEventPage,
-  CheckInPage,
-  ClubAdminDashboard,
-  ClubAuditLogPage,
-  ClubJoinRequestsAdminPage,
-  ClubSettingsPage,
-  ClubStatisticsPage,
-  ClubStatusPage,
-  CreateEventPage,
-  EventAdminDetailPage,
-  EventsManagementPage,
-  FeedbackManagementPage,
-  MemberDetailPage,
-  MembersPage,
   OfficialClubCreatePage,
   PlatformStatisticsPage,
-  PointsManagementPage,
   ProposalReviewPage,
   SystemAdminDashboard,
   SystemAuditLogPage,
@@ -63,10 +48,26 @@ import {
   SystemClubsPage,
   SystemProposalsPage,
   SystemSettingsPage,
-  TransferOwnershipPage,
   UserSecurityDetailPage,
   UsersManagementPage,
 } from "./pages/AdminPages";
+import {
+  ActivitiesManagementPage,
+  ActivityAdminDetailPage,
+  CancelEventPage,
+  CheckInPage,
+  ClubAdminDashboard,
+  ClubJoinRequestsAdminPage,
+  CreateActivityPage,
+  CreateEventPage,
+  EditActivityPage,
+  EditEventPage,
+  EventAdminDetailPage,
+  EventsManagementPage,
+  FeedbackManagementPage,
+  MemberDetailPage,
+  MembersPage,
+} from "./pages/ClubAdminPages";
 export default function App() {
   return (
     <AuthBootstrap>
@@ -155,12 +156,32 @@ export default function App() {
               element={<ClubJoinRequestsAdminPage />}
             />
             <Route
+              path="/club-admin/activities"
+              element={<ActivitiesManagementPage />}
+            />
+            <Route
+              path="/club-admin/activities/new"
+              element={<CreateActivityPage />}
+            />
+            <Route
+              path="/club-admin/activities/:id/edit"
+              element={<EditActivityPage />}
+            />
+            <Route
+              path="/club-admin/activities/:id"
+              element={<ActivityAdminDetailPage />}
+            />
+            <Route
               path="/club-admin/events"
               element={<EventsManagementPage />}
             />
             <Route path="/club-admin/events/new" element={<CreateEventPage />} />
             <Route
-              path="/club-admin/events/cancel"
+              path="/club-admin/events/:id/edit"
+              element={<EditEventPage />}
+            />
+            <Route
+              path="/club-admin/events/:id/cancel"
               element={<CancelEventPage />}
             />
             <Route
@@ -172,21 +193,6 @@ export default function App() {
               path="/club-admin/feedback"
               element={<FeedbackManagementPage />}
             />
-            <Route
-              path="/club-admin/points"
-              element={<PointsManagementPage />}
-            />
-            <Route
-              path="/club-admin/statistics"
-              element={<ClubStatisticsPage />}
-            />
-            <Route path="/club-admin/audit-log" element={<ClubAuditLogPage />} />
-            <Route path="/club-admin/settings" element={<ClubSettingsPage />} />
-            <Route
-              path="/club-admin/transfer"
-              element={<TransferOwnershipPage />}
-            />
-            <Route path="/club-admin/status" element={<ClubStatusPage />} />
           </Route>
         </Route>
         <Route element={<RequireUniversityAdmin />}>

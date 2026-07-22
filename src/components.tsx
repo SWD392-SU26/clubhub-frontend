@@ -30,6 +30,7 @@ import {
   Trophy,
   ScanLine,
   Building2,
+  ClipboardList,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { authApi } from "./api/authApi";
@@ -282,7 +283,7 @@ export function PublicHeader() {
   useEffect(() => {
     let active = true;
 
-    if (!profile || profile.systemRole === "UniversityAdmin") {
+    if (!profile) {
       setHasAdminClub(false);
       return () => {
         active = false;
@@ -308,30 +309,30 @@ export function PublicHeader() {
   }, [profile?.id, profile?.systemRole]);
 
   const isUniversityAdmin = profile?.systemRole === "UniversityAdmin";
-  const homePath = isUniversityAdmin
-    ? "/system-admin"
-    : hasAdminClub
-      ? "/club-admin"
+  const homePath = hasAdminClub
+    ? "/club-admin"
+    : isUniversityAdmin
+      ? "/system-admin"
       : "/dashboard";
-  const profilePath = isUniversityAdmin
-    ? "/system-admin/profile"
-    : hasAdminClub
-      ? "/club-admin/profile"
+  const profilePath = hasAdminClub
+    ? "/club-admin/profile"
+    : isUniversityAdmin
+      ? "/system-admin/profile"
       : "/profile";
-  const editProfilePath = isUniversityAdmin
-    ? "/system-admin/profile/edit"
-    : hasAdminClub
-      ? "/club-admin/profile/edit"
+  const editProfilePath = hasAdminClub
+    ? "/club-admin/profile/edit"
+    : isUniversityAdmin
+      ? "/system-admin/profile/edit"
       : "/profile/edit";
-  const securityPath = isUniversityAdmin
-    ? "/system-admin/account/security"
-    : hasAdminClub
-      ? "/club-admin/account/security"
+  const securityPath = hasAdminClub
+    ? "/club-admin/account/security"
+    : isUniversityAdmin
+      ? "/system-admin/account/security"
       : "/account/security";
-  const workspace = isUniversityAdmin
-    ? "University Admin workspace"
-    : hasAdminClub
-      ? "Club Admin workspace"
+  const workspace = hasAdminClub
+    ? "Club Admin workspace"
+    : isUniversityAdmin
+      ? "University Admin workspace"
       : "Student workspace";
 
   return (
@@ -602,13 +603,10 @@ const clubAdminNav: NavItem[] = [
   ["/club-admin", "Dashboard", LayoutDashboard],
   ["/club-admin/members", "Thành viên", Users],
   ["/club-admin/join-requests", "Yêu cầu tham gia", ListChecks],
+  ["/club-admin/activities", "Hoạt động", ClipboardList],
   ["/club-admin/events", "Sự kiện", CalendarDays],
   ["/club-admin/check-in", "Check-in", ScanLine],
   ["/club-admin/feedback", "Feedback", MessageSquare],
-  ["/club-admin/points", "Điểm", Trophy],
-  ["/club-admin/statistics", "Thống kê", BarChart3],
-  ["/club-admin/audit-log", "Nhật ký", History],
-  ["/club-admin/settings", "Cài đặt", Settings],
 ];
 const systemAdminNav: NavItem[] = [
   ["/system-admin", "Dashboard", LayoutDashboard],
@@ -734,9 +732,9 @@ export function AdminLayout({ system = false }: { system?: boolean }) {
               <Bell className="h-5 w-5" />
             </button>
             {!system && (
-              <Link to="/club-admin/events/new" className="btn-primary">
+              <Link to="/club-admin/activities/new" className="btn-primary">
                 <PlusCircle className="h-4 w-4" />
-                Tạo sự kiện
+                Tạo hoạt động
               </Link>
             )}
           </div>

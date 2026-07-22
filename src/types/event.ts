@@ -30,3 +30,16 @@ export type EventRegistration = {
   checkInTime?: string | null;
   registeredAt: string;
 };
+
+export type CreateEventRequest = {
+  name: string;
+  description?: string;
+  location?: string;
+  startTime: string;
+  endTime: string;
+  capacity?: number;
+};
+
+export type UpdateEventRequest = Partial<CreateEventRequest> & {
+  status?: EventStatus;
+};

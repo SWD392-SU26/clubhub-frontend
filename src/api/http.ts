@@ -43,6 +43,19 @@ function getErrorMessage(
   return json?.message ?? json?.title ?? fallback;
 }
 
+function normalizeLoginResponse(data: LoginResponse): LoginResponse {
+  const role = data.profile.role ?? data.profile.systemRole ?? "Student";
+
+  return {
+    ...data,
+    profile: {
+      ...data.profile,
+      role,
+      systemRole: role,
+    },
+  };
+}
+
 async function refreshSession() {
   const refreshToken = getRefreshToken();
 
@@ -72,8 +85,9 @@ async function refreshSession() {
           );
         }
 
-        setAuthSession(json.data);
-        return json.data;
+        const normalized = normalizeLoginResponse(json.data);
+        setAuthSession(normalized);
+        return normalized;
       })
       .finally(() => {
         refreshPromise = null;
