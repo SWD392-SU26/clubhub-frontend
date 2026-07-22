@@ -51,11 +51,15 @@ import {
   UsersManagementPage,
 } from "./pages/AdminPages";
 import {
+  ActivitiesManagementPage,
+  ActivityAdminDetailPage,
   CancelEventPage,
   CheckInPage,
   ClubAdminDashboard,
   ClubJoinRequestsAdminPage,
+  CreateActivityPage,
   CreateEventPage,
+  EditActivityPage,
   EditEventPage,
   EventAdminDetailPage,
   EventsManagementPage,
@@ -148,6 +152,22 @@ export default function App() {
             <Route
               path="/club-admin/join-requests"
               element={<ClubJoinRequestsAdminPage />}
+            />
+            <Route
+              path="/club-admin/activities"
+              element={<ActivitiesManagementPage />}
+            />
+            <Route
+              path="/club-admin/activities/new"
+              element={<CreateActivityPage />}
+            />
+            <Route
+              path="/club-admin/activities/:id/edit"
+              element={<EditActivityPage />}
+            />
+            <Route
+              path="/club-admin/activities/:id"
+              element={<ActivityAdminDetailPage />}
             />
             <Route
               path="/club-admin/events"

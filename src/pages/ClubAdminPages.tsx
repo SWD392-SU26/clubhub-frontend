@@ -14,6 +14,7 @@ import {
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { clubApi } from "../api/clubApi";
+import { activityApi } from "../api/activityApi";
 import { eventApi } from "../api/eventApi";
 import { feedbackApi } from "../api/feedbackApi";
 import { membershipApi } from "../api/membershipApi";
@@ -30,6 +31,7 @@ import {
 } from "../components";
 import type { ClubDetail, ClubRole, MyMembership } from "../types/club";
 import type { ClubMember, FeedbackSummary, MembershipRequest } from "../types/admin";
+import type { ActivityDetailDto, ActivityDto, ActivityStatus } from "../types/activity";
 import type { EventDto, EventRegistration } from "../types/event";
 import type { MemberPoint } from "../types/point";
 import { getProfileDisplayName, useCurrentProfile } from "../useCurrentProfile";
@@ -146,6 +148,29 @@ function useClubEvents(clubId: string) {
     void reload();
   }, [clubId]);
   return { events, loading, error, reload };
+}
+
+function useClubActivities(clubId: string) {
+  const [activities, setActivities] = useState<ActivityDto[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const reload = async () => {
+    if (!clubId) return;
+    setLoading(true);
+    try {
+      const result = await activityApi.getClubActivities(clubId, 1, 100);
+      setActivities(result.items);
+      setError("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Không thể tải hoạt động.");
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => {
+    void reload();
+  }, [clubId]);
+  return { activities, loading, error, reload };
 }
 
 export function ClubAdminDashboard() {
@@ -298,6 +323,343 @@ export function ClubJoinRequestsAdminPage() {
     {(admin.error || error) && <ErrorNotice message={admin.error || error} />}
     {loading ? <LoadingState /> : requests.length === 0 ? <EmptyState title="Không có yêu cầu chờ duyệt" description="Các yêu cầu mới sẽ xuất hiện tại đây." /> : <section className="card overflow-hidden"><DataTable columns={["Họ và tên", "MSSV", "Ngày gửi", "Lý do", "Thao tác"]} rows={requests.map((r) => [r.fullName, r.studentCode ?? "—", dateTime(r.requestedAt), r.joinReason || "Không cung cấp", <div className="flex gap-2"><button title="Duyệt" onClick={() => void review(r, true)} className="btn-ghost text-emerald-600"><CheckCircle2 /></button><button title="Từ chối" onClick={() => void review(r, false)} className="btn-ghost text-red-600"><XCircle /></button></div>])} /></section>}
   </main>;
+}
+
+function activityPayloadFromForm(form: FormData) {
+  const text = (key: string) => String(form.get(key) ?? "").trim();
+  const number = (key: string) => {
+    const value = Number(form.get(key));
+    return Number.isFinite(value) && value > 0 ? value : undefined;
+  };
+  const date = (key: string) => {
+    const value = text(key);
+    return value ? new Date(value).toISOString() : undefined;
+  };
+
+  return {
+    title: text("title"),
+    type: text("type"),
+    description: text("description") || undefined,
+    location: text("location") || undefined,
+    imageUrl: text("imageUrl") || undefined,
+    startTime: date("startTime")!,
+    endTime: date("endTime")!,
+    registrationDeadline: date("registrationDeadline"),
+    capacity: number("capacity"),
+    checkInPoints: number("checkInPoints"),
+  };
+}
+
+export function ActivitiesManagementPage() {
+  const admin = useAdminClub();
+  const data = useClubActivities(admin.clubId);
+  const [query, setQuery] = useState("");
+  const activities = data.activities.filter((activity) =>
+    `${activity.title} ${activity.type} ${activity.location ?? ""}`
+      .toLowerCase()
+      .includes(query.toLowerCase()),
+  );
+
+  return (
+    <main className="page-shell">
+      <PageTitle
+        title="Quản lý hoạt động"
+        description={admin.club?.name}
+        actions={
+          <Link to="/club-admin/activities/new" className="btn-primary">
+            <PlusCircle className="h-4 w-4" />
+            Tạo hoạt động mới
+          </Link>
+        }
+      />
+      {(admin.error || data.error) && <ErrorNotice message={admin.error || data.error} />}
+      <FilterBar
+        placeholder="Tìm theo tên, loại hoặc địa điểm..."
+        value={query}
+        onChange={setQuery}
+      />
+      {data.loading ? (
+        <LoadingState />
+      ) : activities.length === 0 ? (
+        <EmptyState title="Chưa có hoạt động" description="Tạo hoạt động đầu tiên cho CLB." />
+      ) : (
+        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+          {activities.map((activity) => (
+            <article className="card p-5" key={activity.id}>
+              <div className="flex items-center justify-between gap-3">
+                <StatusBadge status={activity.status} />
+                <span className="rounded-full bg-primary-soft px-3 py-1 text-xs font-bold text-primary">
+                  {activity.type}
+                </span>
+              </div>
+              <h3 className="mt-4 font-bold">{activity.title}</h3>
+              <p className="mt-2 text-sm text-muted">
+                {dateTime(activity.startTime)} · {activity.location ?? "Chưa có địa điểm"}
+              </p>
+              <p className="mt-2 text-sm text-muted">
+                {activity.registeredCount}/{activity.capacity ?? "∞"} người đăng ký
+              </p>
+              <Link className="btn-secondary mt-5 w-full" to={`/club-admin/activities/${activity.id}`}>
+                Chi tiết
+              </Link>
+            </article>
+          ))}
+        </div>
+      )}
+    </main>
+  );
+}
+
+export function ActivityAdminDetailPage() {
+  const { id = "" } = useParams();
+  const [activity, setActivity] = useState<ActivityDetailDto | null>(null);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  const load = async () => {
+    try {
+      setActivity(await activityApi.getActivityById(id));
+      setError("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Không thể tải hoạt động.");
+    }
+  };
+
+  useEffect(() => {
+    void load();
+  }, [id]);
+
+  async function checkIn(userId: string) {
+    try {
+      await activityApi.checkIn(id, userId);
+      setMessage("Check-in hoạt động thành công.");
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Không thể check-in.");
+    }
+  }
+
+  async function cancel() {
+    if (!activity || !confirm(`Hủy hoạt động "${activity.title}"?`)) return;
+    try {
+      await activityApi.cancel(activity.id);
+      setMessage("Đã hủy hoạt động.");
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Không thể hủy hoạt động.");
+    }
+  }
+
+  return (
+    <main className="page-shell">
+      <PageTitle
+        title={activity?.title ?? "Chi tiết hoạt động"}
+        description={activity ? `${activity.type} · ${dateTime(activity.startTime)}` : ""}
+        actions={
+          activity && (
+            <>
+              <Link to={`/club-admin/activities/${activity.id}/edit`} className="btn-secondary">
+                <Pencil className="h-4 w-4" />
+                Sửa hoạt động
+              </Link>
+              <button onClick={() => void cancel()} className="btn-ghost text-red-600">
+                <XCircle className="h-4 w-4" />
+                Hủy hoạt động
+              </button>
+            </>
+          )
+        }
+      />
+      {error && <ErrorNotice message={error} />}
+      {message && <SuccessNotice message={message} />}
+      {!activity ? (
+        <LoadingState />
+      ) : (
+        <>
+          <div className="grid gap-4 sm:grid-cols-4">
+            <StatCard label="Đã đăng ký" value={`${activity.registeredCount}/${activity.capacity ?? "∞"}`} icon={Users} />
+            <StatCard label="Đã check-in" value={String(activity.checkedInCount)} icon={CheckCircle2} tone="green" />
+            <StatCard label="Điểm check-in" value={String(activity.checkInPoints)} icon={Trophy} tone="blue" />
+            <StatCard label="Trạng thái" value={activity.status} icon={CalendarDays} tone="slate" />
+          </div>
+          <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_1.4fr]">
+            <SectionCard title="Thông tin hoạt động">
+              <p className="text-sm text-muted">{activity.description || "Chưa có mô tả."}</p>
+              <div className="mt-5 grid gap-3 text-sm text-muted">
+                <p><span className="font-semibold text-ink">Bắt đầu:</span> {dateTime(activity.startTime)}</p>
+                <p><span className="font-semibold text-ink">Kết thúc:</span> {dateTime(activity.endTime)}</p>
+                <p><span className="font-semibold text-ink">Hạn đăng ký:</span> {dateTime(activity.registrationDeadline)}</p>
+                <p><span className="font-semibold text-ink">Địa điểm:</span> {activity.location ?? "Chưa cập nhật"}</p>
+                <p><span className="font-semibold text-ink">Người tạo:</span> {activity.creatorName ?? "—"}</p>
+              </div>
+            </SectionCard>
+            <SectionCard title="Danh sách đăng ký">
+              {activity.registrants?.length ? (
+                <DataTable
+                  columns={["Thành viên", "MSSV", "Ghi chú", "Trạng thái", "Thao tác"]}
+                  rows={activity.registrants.map((registrant) => [
+                    registrant.fullName,
+                    registrant.studentCode ?? "—",
+                    registrant.note ?? "—",
+                    registrant.isCheckedIn ? `Đã check-in · ${dateTime(registrant.checkInTime)}` : "Chưa check-in",
+                    registrant.isCheckedIn ? (
+                      <span className="text-sm font-semibold text-emerald-600">Hoàn tất</span>
+                    ) : (
+                      <button onClick={() => void checkIn(registrant.userId)} className="btn-secondary">
+                        Check-in
+                      </button>
+                    ),
+                  ])}
+                />
+              ) : (
+                <EmptyState title="Chưa có người đăng ký" description="Danh sách người đăng ký sẽ hiển thị ở đây." />
+              )}
+            </SectionCard>
+          </div>
+        </>
+      )}
+    </main>
+  );
+}
+
+export function CreateActivityPage() {
+  const admin = useAdminClub();
+  const navigate = useNavigate();
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+    setSaving(true);
+    try {
+      const created = await activityApi.create(admin.clubId, activityPayloadFromForm(form));
+      navigate(`/club-admin/activities/${created.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Không thể tạo hoạt động.");
+      setSaving(false);
+    }
+  }
+
+  return (
+    <main className="page-shell max-w-5xl">
+      <PageTitle title="Tạo hoạt động mới" description={admin.club?.name} />
+      {(admin.error || error) && <ErrorNotice message={admin.error || error} />}
+      <ActivityForm submitLabel={saving ? "Đang tạo..." : "Tạo hoạt động"} disabled={saving || !admin.clubId} onSubmit={submit} />
+    </main>
+  );
+}
+
+export function EditActivityPage() {
+  const { id = "" } = useParams();
+  const navigate = useNavigate();
+  const [activity, setActivity] = useState<ActivityDetailDto | null>(null);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    activityApi.getActivityById(id).then(setActivity).catch((err) => setError(err instanceof Error ? err.message : "Không thể tải hoạt động."));
+  }, [id]);
+
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+    setSaving(true);
+    try {
+      const updated = await activityApi.update(id, {
+        ...activityPayloadFromForm(form),
+        status: String(form.get("status")) as ActivityStatus,
+      });
+      navigate(`/club-admin/activities/${updated.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Không thể cập nhật hoạt động.");
+      setSaving(false);
+    }
+  }
+
+  return (
+    <main className="page-shell max-w-5xl">
+      <PageTitle title="Sửa hoạt động" description={activity?.title ?? ""} />
+      {error && <ErrorNotice message={error} />}
+      {!activity ? (
+        <LoadingState />
+      ) : (
+        <ActivityForm activity={activity} submitLabel={saving ? "Đang lưu..." : "Lưu thay đổi"} disabled={saving} onSubmit={submit} />
+      )}
+    </main>
+  );
+}
+
+function ActivityForm({
+  activity,
+  submitLabel,
+  disabled,
+  onSubmit,
+}: {
+  activity?: ActivityDetailDto | null;
+  submitLabel: string;
+  disabled?: boolean;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <form onSubmit={onSubmit} className="card grid gap-5 p-6 sm:grid-cols-2">
+      <label className="sm:col-span-2">
+        <span className="label">Tên hoạt động *</span>
+        <input name="title" className="input" required maxLength={200} defaultValue={activity?.title ?? ""} />
+      </label>
+      <label>
+        <span className="label">Loại hoạt động *</span>
+        <input name="type" className="input" required maxLength={100} defaultValue={activity?.type ?? "Sinh hoạt"} />
+      </label>
+      <label>
+        <span className="label">Địa điểm</span>
+        <input name="location" className="input" defaultValue={activity?.location ?? ""} />
+      </label>
+      <label>
+        <span className="label">Bắt đầu *</span>
+        <input name="startTime" className="input" type="datetime-local" required defaultValue={toDateTimeLocalValue(activity?.startTime)} />
+      </label>
+      <label>
+        <span className="label">Kết thúc *</span>
+        <input name="endTime" className="input" type="datetime-local" required defaultValue={toDateTimeLocalValue(activity?.endTime)} />
+      </label>
+      <label>
+        <span className="label">Hạn đăng ký</span>
+        <input name="registrationDeadline" className="input" type="datetime-local" defaultValue={toDateTimeLocalValue(activity?.registrationDeadline)} />
+      </label>
+      <label>
+        <span className="label">Sức chứa</span>
+        <input name="capacity" className="input" type="number" min="1" defaultValue={activity?.capacity ?? ""} />
+      </label>
+      <label>
+        <span className="label">Điểm check-in</span>
+        <input name="checkInPoints" className="input" type="number" min="1" defaultValue={activity?.checkInPoints ?? 10} />
+      </label>
+      {activity && (
+        <label>
+          <span className="label">Trạng thái</span>
+          <select name="status" className="input" defaultValue={activity.status}>
+            <option value="Upcoming">Upcoming</option>
+            <option value="InProgress">InProgress</option>
+            <option value="Completed">Completed</option>
+            <option value="Cancelled">Cancelled</option>
+          </select>
+        </label>
+      )}
+      <label className="sm:col-span-2">
+        <span className="label">Ảnh minh họa URL</span>
+        <input name="imageUrl" className="input" defaultValue={activity?.imageUrl ?? ""} />
+      </label>
+      <label className="sm:col-span-2">
+        <span className="label">Mô tả</span>
+        <textarea name="description" className="input h-40 py-3" defaultValue={activity?.description ?? ""} />
+      </label>
+      <div className="sm:col-span-2 flex justify-end gap-2">
+        <Link to={activity ? `/club-admin/activities/${activity.id}` : "/club-admin/activities"} className="btn-secondary">Hủy</Link>
+        <button disabled={disabled} className="btn-primary">{submitLabel}</button>
+      </div>
+    </form>
+  );
 }
 
 export function EventsManagementPage() {

@@ -30,6 +30,7 @@ import {
   Trophy,
   ScanLine,
   Building2,
+  ClipboardList,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { authApi } from "./api/authApi";
@@ -554,6 +555,7 @@ const clubAdminNav: NavItem[] = [
   ["/club-admin", "Dashboard", LayoutDashboard],
   ["/club-admin/members", "Thành viên", Users],
   ["/club-admin/join-requests", "Yêu cầu tham gia", ListChecks],
+  ["/club-admin/activities", "Hoạt động", ClipboardList],
   ["/club-admin/events", "Sự kiện", CalendarDays],
   ["/club-admin/check-in", "Check-in", ScanLine],
   ["/club-admin/feedback", "Feedback", MessageSquare],
@@ -682,9 +684,9 @@ export function AdminLayout({ system = false }: { system?: boolean }) {
               <Bell className="h-5 w-5" />
             </button>
             {!system && (
-              <Link to="/club-admin/events/new" className="btn-primary">
+              <Link to="/club-admin/activities/new" className="btn-primary">
                 <PlusCircle className="h-4 w-4" />
-                Tạo sự kiện
+                Tạo hoạt động
               </Link>
             )}
           </div>
