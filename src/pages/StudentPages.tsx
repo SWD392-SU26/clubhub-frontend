@@ -20,6 +20,7 @@ import {
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { authApi } from "../api/authApi";
+import { activityApi } from "../api/activityApi";
 import { clearAuthSession, getProfile, setProfile } from "../api/authStorage";
 import { clubApi } from "../api/clubApi";
 import { eventApi } from "../api/eventApi";
@@ -29,6 +30,7 @@ import { pointApi } from "../api/pointApi";
 import { proposalApi } from "../api/proposalApi";
 import { storageApi } from "../api/storageApi";
 import type { UserProfile } from "../types/auth";
+import type { MyRegisteredActivityDto } from "../types/activity";
 import type { ClubCategory, ClubSummary, MyMembership } from "../types/club";
 import type { EventDto, EventRegistration } from "../types/event";
 import type { NotificationDto } from "../types/notification";
@@ -661,10 +663,10 @@ export function StudentDashboard() {
                   const membership = memberships.find(
                     (item) => item.clubId === club.id,
                   );
+                  const manager = isClubManager(membership);
 
                   return (
-                    <Link
-                      to={`/my-clubs/${club.id}`}
+                    <article
                       className="rounded-xl border p-4 transition hover:bg-primary-soft"
                       key={club.id}
                     >
@@ -683,7 +685,23 @@ export function StudentDashboard() {
                           </div>
                         </div>
                       </div>
-                    </Link>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <Link
+                          to={`/my-clubs/${club.id}`}
+                          className="btn-secondary flex-1 justify-center"
+                        >
+                          Chi tiết
+                        </Link>
+                        {manager && (
+                          <Link
+                            to="/club-admin"
+                            className="btn-primary flex-1 justify-center"
+                          >
+                            Quản trị
+                          </Link>
+                        )}
+                      </div>
+                    </article>
                   );
                 })}
               </div>
@@ -2394,6 +2412,186 @@ export function MyEventsPage() {
                     >
                       Feedback
                     </Link>
+                  )}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      )}
+    </main>
+  );
+}
+
+export function MyActivitiesPage() {
+  const [activities, setActivities] = useState<MyRegisteredActivityDto[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+  const [cancellingId, setCancellingId] = useState("");
+
+  const loadActivities = async () => {
+    const data = await activityApi.getMyActivities(1, 100);
+    setActivities(data.items ?? []);
+  };
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadMyActivities() {
+      setLoading(true);
+      setError("");
+      setSuccessMessage("");
+
+      try {
+        const data = await activityApi.getMyActivities(1, 100);
+
+        if (!ignore) {
+          setActivities(data.items ?? []);
+        }
+      } catch (err) {
+        if (!ignore) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Không tải được hoạt động của bạn.",
+          );
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadMyActivities();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  const cancelRegistration = async (activityId: string) => {
+    setCancellingId(activityId);
+    setError("");
+    setSuccessMessage("");
+
+    try {
+      await activityApi.cancelRegistration(activityId);
+      await loadActivities();
+      setSuccessMessage("Đã hủy đăng ký hoạt động.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Hủy đăng ký thất bại.");
+    } finally {
+      setCancellingId("");
+    }
+  };
+
+  const canCancelRegistration = (activity: MyRegisteredActivityDto) =>
+    !activity.isCheckedIn && ["Upcoming", "InProgress"].includes(activity.status);
+
+  return (
+    <main className="page-shell">
+      <PageTitle
+        title="Hoạt động của tôi"
+        description="Theo dõi các hoạt động nội bộ CLB bạn đã đăng ký và trạng thái check-in."
+      />
+
+      {error && (
+        <p className="mb-5 rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+          {error}
+        </p>
+      )}
+
+      {successMessage && (
+        <p className="mb-5 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+          {successMessage}
+        </p>
+      )}
+
+      {loading && (
+        <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-muted">
+          Đang tải hoạt động của bạn...
+        </p>
+      )}
+
+      {!loading && activities.length === 0 && (
+        <div>
+          <EmptyState
+            title="Bạn chưa đăng ký hoạt động nào"
+            description="Hoạt động nội bộ sẽ xuất hiện sau khi bạn tham gia CLB và đăng ký."
+          />
+          <Link to="/my-clubs" className="btn-primary mt-5 w-fit">
+            Xem CLB của tôi
+          </Link>
+        </div>
+      )}
+
+      {!loading && activities.length > 0 && (
+        <div className="grid gap-4">
+          {activities.map((activity) => {
+            const canCancel = canCancelRegistration(activity);
+            const checkInText = activity.checkInTime
+              ? `${formatFullDate(activity.checkInTime)} · ${formatTimeRange(
+                  activity.checkInTime,
+                  null,
+                )}`
+              : "Chưa check-in";
+
+            return (
+              <section
+                className="card flex flex-col gap-4 p-5 lg:flex-row lg:items-center"
+                key={activity.registrationId}
+              >
+                <div className="grid h-16 w-16 shrink-0 place-items-center rounded-xl bg-primary-soft text-center font-bold text-primary">
+                  {formatShortDate(activity.startTime)}
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="font-bold">{activity.title}</h3>
+                    <StatusBadge
+                      status={
+                        activity.isCheckedIn ? "Đã check-in" : "Đã đăng ký"
+                      }
+                    />
+                    <StatusBadge status={activity.status} />
+                  </div>
+
+                  <div className="mt-2 grid gap-1 text-sm text-muted md:grid-cols-2">
+                    <span>CLB: {activity.clubName}</span>
+                    <span>Loại: {activity.type}</span>
+                    <span>
+                      Diễn ra: {formatFullDate(activity.startTime)} ·{" "}
+                      {formatTimeRange(activity.startTime, activity.endTime)}
+                    </span>
+                    <span>Địa điểm: {activity.location || "Chưa cập nhật"}</span>
+                    <span>
+                      Đăng ký lúc{" "}
+                      {formatTimeRange(activity.registeredAt, null)}
+                    </span>
+                    <span>Check-in: {checkInText}</span>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Link
+                    to={`/my-activities/${activity.activityId}`}
+                    className="btn-secondary"
+                  >
+                    Chi tiết
+                  </Link>
+
+                  {canCancel && (
+                    <button
+                      onClick={() => cancelRegistration(activity.activityId)}
+                      disabled={cancellingId === activity.activityId}
+                      className="btn-ghost text-red-600"
+                    >
+                      {cancellingId === activity.activityId
+                        ? "Đang hủy..."
+                        : "Hủy đăng ký"}
+                    </button>
                   )}
                 </div>
               </section>

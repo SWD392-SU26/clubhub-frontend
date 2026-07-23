@@ -125,6 +125,7 @@ function UserProfileMenu({
   profilePath = "/profile",
   editProfilePath = "/profile/edit",
   securityPath = "/account/security",
+  clubAdminPath,
   buttonClassName = "",
   menuClassName = "right-0 top-12",
 }: {
@@ -134,6 +135,7 @@ function UserProfileMenu({
   profilePath?: string;
   editProfilePath?: string;
   securityPath?: string;
+  clubAdminPath?: string;
   buttonClassName?: string;
   menuClassName?: string;
 }) {
@@ -222,6 +224,16 @@ function UserProfileMenu({
               <LockKeyhole className="h-4 w-4" />
               Đổi mật khẩu
             </Link>
+            {clubAdminPath && (
+              <Link
+                to={clubAdminPath}
+                onClick={close}
+                className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-primary hover:bg-primary-soft"
+              >
+                <ShieldCheck className="h-4 w-4" />
+                Chuyển sang quản trị CLB
+              </Link>
+            )}
           </div>
           <div className="border-t border-slate-100 p-2">
             <LogoutButton className="w-full justify-start" />
@@ -310,6 +322,18 @@ export function PublicHeader() {
   }, [profile?.id, profile?.systemRole]);
 
   const isUniversityAdmin = profile?.systemRole === "UniversityAdmin";
+<<<<<<< HEAD
+  const homePath = isUniversityAdmin ? "/system-admin" : "/dashboard";
+  const profilePath = isUniversityAdmin ? "/system-admin/profile" : "/profile";
+  const editProfilePath = isUniversityAdmin
+    ? "/system-admin/profile/edit"
+    : "/profile/edit";
+  const securityPath = isUniversityAdmin
+    ? "/system-admin/account/security"
+    : "/account/security";
+  const workspace = isUniversityAdmin
+      ? "University Admin workspace"
+=======
   const homePath = hasAdminClub
     ? "/club-admin"
     : isUniversityAdmin
@@ -334,7 +358,9 @@ export function PublicHeader() {
     ? "Trang quản trị viên đại học"
     : hasAdminClub
       ? "Club Admin workspace"
+>>>>>>> origin
       : "Student workspace";
+  const clubAdminPath = hasAdminClub && !isUniversityAdmin ? "/club-admin" : undefined;
 
   return (
     <header className="sticky top-0 z-40 border-b bg-white/95 backdrop-blur">
@@ -366,6 +392,7 @@ export function PublicHeader() {
                 profilePath={profilePath}
                 editProfilePath={editProfilePath}
                 securityPath={securityPath}
+                clubAdminPath={clubAdminPath}
               />
             </>
           ) : (
@@ -480,6 +507,7 @@ const studentNav = [
   ["/dashboard", "Tổng quan", LayoutDashboard],
   ["/my-clubs", "Câu lạc bộ", Users],
   ["/my-events", "Sự kiện", CalendarDays],
+  ["/my-activities", "Hoạt động", ListChecks],
   ["/club-proposals", "Đề xuất CLB", ClipboardCheck],
   ["/activity/points", "Điểm", Trophy],
   ["/notifications", "Thông báo", Bell],
@@ -488,6 +516,7 @@ const studentNav = [
 export function StudentLayout() {
   const [open, setOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [hasAdminClub, setHasAdminClub] = useState(false);
 
   useEffect(() => {
     let ignore = false;
@@ -514,6 +543,29 @@ export function StudentLayout() {
         "clubhub_notifications_updated",
         loadUnreadCount,
       );
+    };
+  }, []);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadAdminAccess() {
+      try {
+        const memberships = await membershipApi.getMyMemberships();
+        if (!ignore) {
+          setHasAdminClub(Boolean(getPrimaryAdminMembership(memberships)));
+        }
+      } catch {
+        if (!ignore) {
+          setHasAdminClub(false);
+        }
+      }
+    }
+
+    loadAdminAccess();
+
+    return () => {
+      ignore = true;
     };
   }, []);
 
@@ -561,6 +613,7 @@ export function StudentLayout() {
             name="Minh Hiếu"
             initials="MH"
             workspace="Student workspace"
+            clubAdminPath={hasAdminClub ? "/club-admin" : undefined}
           />
         </div>
       </header>
@@ -672,6 +725,16 @@ export function AdminLayout({ system = false }: { system?: boolean }) {
         {workspaceLabel}
       </div>
       <nav className="mt-8 grid gap-2">
+        {!system && (
+          <Link
+            to="/dashboard"
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-3 rounded-xl px-4 py-3 font-semibold text-white/90 transition hover:bg-white/15 hover:text-white"
+          >
+            <Home className="h-5 w-5" />
+            Về trang sinh viên
+          </Link>
+        )}
         {nav.map(([to, label, Icon]) => (
           <NavLink
             key={to}

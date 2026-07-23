@@ -4,6 +4,8 @@ import type {
   ActivityDetailDto,
   ActivityDto,
   CreateActivityRequest,
+  MyRegisteredActivityDto,
+  RegisterActivityRequest,
   UpdateActivityRequest,
 } from "../types/activity";
 
@@ -56,5 +58,24 @@ export const activityApi = {
     return apiRequest<boolean>(`/api/activities/${activityId}/checkin/${userId}`, {
       method: "POST",
     });
+  },
+
+  register(activityId: string, payload: RegisterActivityRequest = {}) {
+    return apiRequest<boolean>(`/api/activities/${activityId}/register`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  cancelRegistration(activityId: string) {
+    return apiRequest<boolean>(`/api/activities/${activityId}/register`, {
+      method: "DELETE",
+    });
+  },
+
+  getMyActivities(page = 1, pageSize = 20) {
+    return apiRequest<PagedResult<MyRegisteredActivityDto>>(
+      `/api/my-activities${toQuery({ page, pageSize })}`,
+    );
   },
 };

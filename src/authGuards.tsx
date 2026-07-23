@@ -34,51 +34,9 @@ function getAuthState() {
 
 export function RequireGuest() {
   const { isAuthenticated, profile } = getAuthState();
-  const [homePath, setHomePath] = useState<string | null>(null);
-
-  useEffect(() => {
-    let ignore = false;
-
-    async function resolveHomePath() {
-      if (!isAuthenticated) {
-        setHomePath(null);
-        return;
-      }
-
-      try {
-        const memberships = await membershipApi.getMyMemberships();
-        if (!ignore) {
-          if (profile?.systemRole === "UniversityAdmin") {
-            setHomePath("/system-admin");
-            return;
-          }
-
-          setHomePath(
-            hasClubAdminPermission(memberships)
-              ? "/club-admin"
-              : getHomePath(profile),
-          );
-        }
-      } catch {
-        if (!ignore) {
-          setHomePath(getHomePath(profile));
-        }
-      }
-    }
-
-    resolveHomePath();
-
-    return () => {
-      ignore = true;
-    };
-  }, [isAuthenticated, profile?.systemRole]);
 
   if (isAuthenticated) {
-    if (!homePath) {
-      return <GuardLoading message="Đang kiểm tra phiên đăng nhập..." />;
-    }
-
-    return <Navigate to={homePath} replace />;
+    return <Navigate to={getHomePath(profile)} replace />;
   }
 
   return <Outlet />;
@@ -86,57 +44,13 @@ export function RequireGuest() {
 
 export function RequireGuestLanding() {
   const { isAuthenticated, profile } = getAuthState();
-  const [homePath, setHomePath] = useState<string | null>(null);
-
-  useEffect(() => {
-    let ignore = false;
-
-    async function resolveHomePath() {
-      if (!isAuthenticated) {
-        setHomePath(null);
-        return;
-      }
-
-      try {
-        const memberships = await membershipApi.getMyMemberships();
-        if (!ignore) {
-          if (profile?.systemRole === "UniversityAdmin") {
-            setHomePath("/system-admin");
-            return;
-          }
-
-          const hasClubAdminAccess = hasClubAdminPermission(memberships);
-          setHomePath(
-            hasClubAdminAccess
-              ? "/club-admin"
-              : getHomePath(profile),
-          );
-        }
-      } catch {
-        if (!ignore) {
-          setHomePath(getHomePath(profile));
-        }
-      }
-    }
-
-    resolveHomePath();
-
-    return () => {
-      ignore = true;
-    };
-  }, [isAuthenticated, profile?.systemRole]);
 
   if (!isAuthenticated) {
     return <Outlet />;
   }
 
-  if (!homePath) {
-    return <GuardLoading message="Đang kiểm tra phiên đăng nhập..." />;
-  }
-
-  return <Navigate to={homePath} replace />;
+  return <Navigate to={getHomePath(profile)} replace />;
 }
-
 export function RequireAuth() {
   const location = useLocation();
   const { isAuthenticated } = getAuthState();
