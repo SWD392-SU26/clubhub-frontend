@@ -1,4 +1,5 @@
 import type { ClubCategory } from "./club";
+import type { PagedResult } from "./common";
 
 export type ProposalStatus =
   | "Pending"
@@ -31,6 +32,13 @@ export type ProposalDetail = ProposalSummary & {
   proposalFileUrl?: string | null;
   notes?: string | null;
   submitterName: string;
+};
+
+export type ProposalsResult = PagedResult<ProposalSummary>;
+
+export type ReviewProposalRequest = {
+  isApproved: boolean;
+  rejectionReason?: string;
 };
 
 export type SubmitProposalRequest = {

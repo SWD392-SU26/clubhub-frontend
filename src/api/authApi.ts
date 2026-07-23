@@ -1,4 +1,5 @@
 import { apiRequest } from "./http";
+import { normalizeLoginResponse, normalizeUserProfile } from "./authStorage";
 import type {
   ChangePasswordRequest,
   ForgotPasswordRequest,
@@ -11,19 +12,6 @@ import type {
   RefreshTokenRequest,
   VerifyOtpRequest
 } from "../types/auth";
-
-function normalizeLoginResponse(data: LoginResponse): LoginResponse {
-  const role = data.profile.role ?? data.profile.systemRole ?? "Student";
-
-  return {
-    ...data,
-    profile: {
-      ...data.profile,
-      role,
-      systemRole: role,
-    },
-  };
-}
 
 export const authApi = {
   login(payload: LoginRequest) {
@@ -86,13 +74,13 @@ export const authApi = {
   },
 
   getMe() {
-    return apiRequest<UserProfile>("/me");
+    return apiRequest<UserProfile>("/me").then(normalizeUserProfile);
   },
 
   updateMe(payload: UpdateProfileRequest) {
     return apiRequest<UserProfile>("/me", {
       method: "PUT",
       body: JSON.stringify(payload),
-    });
+    }).then(normalizeUserProfile);
   },
 };

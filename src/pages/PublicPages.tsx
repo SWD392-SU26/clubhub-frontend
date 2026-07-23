@@ -71,7 +71,11 @@ const clubCategoryOptions: Array<{
   { label: "Khởi nghiệp", value: "Entrepreneurship" },
 ];
 
-function getClubImage(club: ClubTileData) {
+function getClubImage(club: {
+  coverImageUrl?: string | null;
+  logoUrl?: string | null;
+  image?: string;
+}) {
   return club.coverImageUrl || club.logoUrl || club.image || fallbackClubImage;
 }
 
@@ -95,6 +99,7 @@ function clubSummaryToDetail(club: ClubSummary): ClubDetail {
   return {
     ...club,
     officers: [],
+    members: [],
   };
 }
 
