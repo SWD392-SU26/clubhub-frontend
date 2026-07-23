@@ -42,6 +42,26 @@ export type ActivityRegistrantDto = {
   registeredAt: string;
 };
 
+export type MyRegisteredActivityDto = {
+  registrationId: string;
+  activityId: string;
+  clubId: string;
+  clubName: string;
+  title: string;
+  type: string;
+  location?: string | null;
+  startTime: string;
+  endTime: string;
+  isCheckedIn: boolean;
+  checkInTime?: string | null;
+  status: ActivityStatus | string;
+  registeredAt: string;
+};
+
+export type RegisterActivityRequest = {
+  note?: string | null;
+};
+
 export type CreateActivityRequest = {
   title: string;
   description?: string;

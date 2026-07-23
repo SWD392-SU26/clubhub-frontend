@@ -16,6 +16,7 @@ import {
   VerifyEmailPage,
 } from "./pages/AuthPages";
 import {
+  ActivityDetailPage,
   ClubDetailPage,
   ClubsExplorePage,
   EventDetailPage,
@@ -30,6 +31,7 @@ import {
   ClubProposalsPage,
   EditProfilePage,
   JoinRequestsPage,
+  MyActivitiesPage,
   MyClubsPage,
   MyEventsPage,
   NotificationsPage,
@@ -82,6 +84,7 @@ export default function App() {
           <Route path="/style-guide" element={<StyleGuidePage />} />
           <Route path="/clubs" element={<ClubsExplorePage />} />
           <Route path="/clubs/:id" element={<ClubDetailPage />} />
+          <Route path="/activities/:id" element={<ActivityDetailPage />} />
           <Route path="/events" element={<EventsExplorePage />} />
           <Route path="/events/:id" element={<EventDetailPage />} />
           <Route path="/system-states" element={<SharedStatesPage />} />
@@ -103,6 +106,8 @@ export default function App() {
             <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/my-clubs" element={<MyClubsPage />} />
             <Route path="/my-clubs/:id" element={<ClubDetailPage />} />
+            <Route path="/my-activities" element={<MyActivitiesPage />} />
+            <Route path="/my-activities/:id" element={<ActivityDetailPage />} />
             <Route path="/my-events" element={<MyEventsPage />} />
             <Route path="/my-events/:id" element={<EventDetailPage />} />
             <Route path="/join-requests" element={<JoinRequestsPage />} />

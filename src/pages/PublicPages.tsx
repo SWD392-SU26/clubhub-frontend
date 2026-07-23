@@ -16,6 +16,7 @@ import { clubApi } from "../api/clubApi";
 import { membershipApi } from "../api/membershipApi";
 import { eventApi } from "../api/eventApi";
 import { feedbackApi } from "../api/feedbackApi";
+import { activityApi } from "../api/activityApi";
 import type {
   ClubCategory,
   ClubDetail,
@@ -34,6 +35,11 @@ import {
 } from "../components";
 import type { EventDto, EventRegistration } from "../types/event";
 import type { FeedbackSummary } from "../types/feedback";
+import type {
+  ActivityDetailDto,
+  ActivityDto,
+  MyRegisteredActivityDto,
+} from "../types/activity";
 
 const fallbackClubImage =
   "https://images.unsplash.com/photo-1542744173-8e7e53415bb0?auto=format&fit=crop&w=1200&q=80";
@@ -71,6 +77,10 @@ function getClubImage(club: ClubTileData) {
 
 function getEventImage(event?: EventDto | null) {
   return event?.imageUrl || images.students;
+}
+
+function getActivityImage(activity?: ActivityDto | ActivityDetailDto | null) {
+  return activity?.imageUrl || images.campus;
 }
 
 function isGuid(value?: string) {
@@ -585,6 +595,10 @@ export function ClubDetailPage() {
   const [showAllUpcomingEvents, setShowAllUpcomingEvents] = useState(false);
   const [eventsLoading, setEventsLoading] = useState(false);
   const [eventsError, setEventsError] = useState("");
+  const [activities, setActivities] = useState<ActivityDto[]>([]);
+  const [showAllActivities, setShowAllActivities] = useState(false);
+  const [activitiesLoading, setActivitiesLoading] = useState(false);
+  const [activitiesError, setActivitiesError] = useState("");
 
   useEffect(() => {
     let ignore = false;
@@ -694,6 +708,51 @@ export function ClubDetailPage() {
     }
 
     loadClubEvents();
+
+    return () => {
+      ignore = true;
+    };
+  }, [club?.id]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadClubActivities() {
+      if (!club?.id || !isGuid(club.id)) {
+        setActivities([]);
+        setShowAllActivities(false);
+        setActivitiesError("");
+        return;
+      }
+
+      setActivitiesLoading(true);
+      setActivitiesError("");
+
+      try {
+        const result = await activityApi.getClubActivities(club.id, 1, 20);
+
+        if (!ignore) {
+          setActivities(result.items);
+          setShowAllActivities(false);
+        }
+      } catch (err) {
+        if (!ignore) {
+          setActivities([]);
+          setShowAllActivities(false);
+          setActivitiesError(
+            err instanceof Error
+              ? err.message
+              : "Không tải được hoạt động của CLB.",
+          );
+        }
+      } finally {
+        if (!ignore) {
+          setActivitiesLoading(false);
+        }
+      }
+    }
+
+    loadClubActivities();
 
     return () => {
       ignore = true;
@@ -866,6 +925,13 @@ export function ClubDetailPage() {
     ? activeUpcomingEvents
     : activeUpcomingEvents.slice(0, 3);
   const hiddenUpcomingEventCount = Math.max(activeUpcomingEvents.length - 3, 0);
+  const activeActivities = activities.filter(
+    (activity) => activity.status !== "Cancelled",
+  );
+  const visibleActivities = showAllActivities
+    ? activeActivities
+    : activeActivities.slice(0, 3);
+  const hiddenActivityCount = Math.max(activeActivities.length - 3, 0);
 
   if (loading) {
     return (
@@ -1087,6 +1153,72 @@ export function ClubDetailPage() {
               </button>
             )}
           </SectionCard>
+          <SectionCard title="Hoạt động nội bộ">
+            {activitiesLoading && (
+              <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-muted">
+                Đang tải hoạt động của CLB...
+              </p>
+            )}
+            {!activitiesLoading && activitiesError && (
+              <p className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+                {activitiesError}
+              </p>
+            )}
+            {!activitiesLoading &&
+              !activitiesError &&
+              activeActivities.length === 0 && (
+                <EmptyState
+                  title="Chưa có hoạt động nội bộ"
+                  description="Các buổi sinh hoạt, training hoặc hoạt động cộng điểm của CLB sẽ xuất hiện tại đây."
+                />
+              )}
+            {!activitiesLoading &&
+              !activitiesError &&
+              visibleActivities.map((activity) => (
+                <Link
+                  key={activity.id}
+                  to={`/activities/${activity.id}`}
+                  className="mb-3 flex gap-4 rounded-xl border p-4 hover:bg-primary-soft"
+                >
+                  {activity.imageUrl ? (
+                    <img
+                      src={activity.imageUrl}
+                      alt={activity.title}
+                      className="h-16 w-16 shrink-0 rounded-xl object-cover"
+                    />
+                  ) : (
+                    <div className="grid h-16 w-16 shrink-0 place-items-center rounded-xl bg-primary-soft text-center font-bold text-primary">
+                      {formatEventDate(activity.startTime).slice(0, 5)}
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="font-bold">{activity.title}</div>
+                      <StatusBadge status={activity.status} />
+                    </div>
+                    <div className="mt-1 text-sm text-muted">
+                      {activity.type} ·{" "}
+                      {formatEventTimeRange(activity.startTime, activity.endTime)}
+                    </div>
+                    <div className="mt-1 text-sm text-muted">
+                      {activity.location || "Chưa cập nhật địa điểm"} ·{" "}
+                      {activity.registeredCount}/{activity.capacity ?? "∞"} đăng ký
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            {!activitiesLoading && !activitiesError && hiddenActivityCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowAllActivities((current) => !current)}
+                className="btn-secondary mt-2 w-full"
+              >
+                {showAllActivities
+                  ? "Thu gọn"
+                  : `Xem thêm ${hiddenActivityCount} hoạt động`}
+              </button>
+            )}
+          </SectionCard>
         </div>
         <aside className="space-y-6">
           <SectionCard title="Ban điều hành">
@@ -1118,6 +1250,344 @@ export function ClubDetailPage() {
     </main>
   );
 }
+
+function getActivityActionLabel(status?: string | null) {
+  if (status === "Completed") return "Đã kết thúc";
+  if (status === "Cancelled") return "Đã hủy";
+  if (status === "InProgress") return "Đang diễn ra";
+  return "Không nhận đăng ký";
+}
+
+export function ActivityDetailPage() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [activity, setActivity] = useState<ActivityDetailDto | null>(null);
+  const [myActivity, setMyActivity] =
+    useState<MyRegisteredActivityDto | null>(null);
+  const [membership, setMembership] = useState<MyMembership | null>(null);
+  const [note, setNote] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [message, setMessage] = useState("");
+  const [success, setSuccess] = useState(false);
+  const [error, setError] = useState("");
+
+  const loadActivityState = async (activityId: string) => {
+    const data = await activityApi.getActivityById(activityId);
+    const [memberships, myActivities] = getAccessToken()
+      ? await Promise.all([
+          membershipApi.getMyMemberships().catch(() => []),
+          activityApi.getMyActivities(1, 100).catch(() => null),
+        ])
+      : [[], null];
+
+    setActivity(data);
+    setMembership(
+      memberships.find((item) => item.clubId === data.clubId) ?? null,
+    );
+    setMyActivity(
+      myActivities?.items.find((item) => item.activityId === data.id) ?? null,
+    );
+  };
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function load() {
+      if (!id) {
+        setError("Không tìm thấy mã hoạt động.");
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      setError("");
+      setMessage("");
+
+      try {
+        const data = await activityApi.getActivityById(id);
+
+        if (ignore) return;
+
+        const [memberships, myActivities] = getAccessToken()
+          ? await Promise.all([
+              membershipApi.getMyMemberships().catch(() => []),
+              activityApi.getMyActivities(1, 100).catch(() => null),
+            ])
+          : [[], null];
+
+        if (ignore) return;
+
+        setActivity(data);
+        setMembership(
+          memberships.find((item) => item.clubId === data.clubId) ?? null,
+        );
+        setMyActivity(
+          myActivities?.items.find((item) => item.activityId === data.id) ??
+            null,
+        );
+      } catch (err) {
+        if (!ignore) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Không tải được hoạt động.",
+          );
+        }
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    }
+
+    load();
+
+    return () => {
+      ignore = true;
+    };
+  }, [id]);
+
+  const registerActivity = async () => {
+    if (!activity) return;
+
+    if (!getAccessToken()) {
+      navigate("/login", {
+        state: {
+          from: location.pathname,
+          message: "Vui lòng đăng nhập để đăng ký hoạt động.",
+        },
+      });
+      return;
+    }
+
+    if (membership?.status !== "Approved") {
+      setSuccess(false);
+      setMessage("Bạn cần là thành viên đã được duyệt của CLB để đăng ký hoạt động.");
+      return;
+    }
+
+    setActionLoading(true);
+    setMessage("");
+    setSuccess(false);
+
+    try {
+      await activityApi.register(activity.id, {
+        note: note.trim() || null,
+      });
+      await loadActivityState(activity.id);
+      setNote("");
+      setSuccess(true);
+      setMessage("Đăng ký hoạt động thành công.");
+    } catch (err) {
+      setSuccess(false);
+      setMessage(
+        err instanceof Error ? err.message : "Đăng ký hoạt động thất bại.",
+      );
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const cancelRegistration = async () => {
+    if (!activity || !myActivity || myActivity.isCheckedIn) return;
+
+    setActionLoading(true);
+    setMessage("");
+    setSuccess(false);
+
+    try {
+      await activityApi.cancelRegistration(activity.id);
+      await loadActivityState(activity.id);
+      setSuccess(true);
+      setMessage("Đã hủy đăng ký hoạt động.");
+    } catch (err) {
+      setSuccess(false);
+      setMessage(
+        err instanceof Error ? err.message : "Hủy đăng ký hoạt động thất bại.",
+      );
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <main className="page-shell">
+        <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-muted">
+          Đang tải thông tin hoạt động...
+        </p>
+      </main>
+    );
+  }
+
+  if (error || !activity) {
+    return (
+      <main className="page-shell">
+        <EmptyState
+          title="Không tải được hoạt động"
+          description={error || "Hoạt động không tồn tại hoặc đã bị ẩn."}
+        />
+      </main>
+    );
+  }
+
+  const isLoggedIn = Boolean(getAccessToken());
+  const isRegistered = Boolean(myActivity);
+  const isCheckedIn = Boolean(myActivity?.isCheckedIn);
+  const memberApproved = membership?.status === "Approved";
+  const deadlineTime = activity.registrationDeadline
+    ? new Date(activity.registrationDeadline).getTime()
+    : null;
+  const deadlinePassed = Boolean(
+    deadlineTime && !Number.isNaN(deadlineTime) && deadlineTime < Date.now(),
+  );
+  const acceptsRegistration =
+    ["Upcoming", "InProgress"].includes(activity.status) && !deadlinePassed;
+  const isFull = Boolean(
+    activity.capacity && activity.registeredCount >= activity.capacity,
+  );
+  const canRegister =
+    isLoggedIn &&
+    memberApproved &&
+    acceptsRegistration &&
+    !isRegistered &&
+    !isFull;
+  const canCancel = isRegistered && !isCheckedIn && acceptsRegistration;
+  const buttonText = !isLoggedIn
+    ? "Đăng nhập để đăng ký"
+    : !memberApproved
+      ? "Tham gia CLB trước"
+      : isFull
+        ? "Đã đủ số lượng"
+        : !acceptsRegistration
+          ? getActivityActionLabel(activity.status)
+          : "Đăng ký hoạt động";
+
+  return (
+    <main className="page-shell">
+      <PageTitle
+        eyebrow="Hoạt động CLB"
+        title={activity.title}
+        description={`${activity.clubName} · ${activity.type} · ${
+          activity.location || "Chưa cập nhật địa điểm"
+        }`}
+        actions={
+          isRegistered ? (
+            <>
+              <button className="btn-secondary" disabled>
+                {isCheckedIn ? "Đã check-in" : "Đã đăng ký"}
+              </button>
+              {canCancel && (
+                <button
+                  type="button"
+                  onClick={cancelRegistration}
+                  disabled={actionLoading}
+                  className="btn-ghost text-red-600"
+                >
+                  {actionLoading ? "Đang hủy..." : "Hủy đăng ký"}
+                </button>
+              )}
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={registerActivity}
+              disabled={
+                actionLoading ||
+                isFull ||
+                !acceptsRegistration ||
+                (isLoggedIn && (!memberApproved || !canRegister))
+              }
+              className="btn-primary"
+            >
+              {actionLoading ? "Đang đăng ký..." : buttonText}
+            </button>
+          )
+        }
+      />
+
+      {message && (
+        <p
+          className={`mb-5 rounded-xl px-4 py-3 text-sm font-medium ${
+            success ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-600"
+          }`}
+        >
+          {message}
+        </p>
+      )}
+
+      <img
+        src={getActivityImage(activity)}
+        alt={activity.title}
+        className="mb-6 h-72 w-full rounded-2xl object-cover shadow-card"
+      />
+
+      <div className="grid gap-6 lg:grid-cols-[1.4fr_.8fr]">
+        <SectionCard title="Về hoạt động">
+          <p className="leading-7 text-muted">
+            {activity.description || "Thông tin hoạt động sẽ được cập nhật sau."}
+          </p>
+          {!isRegistered && memberApproved && acceptsRegistration && (
+            <label className="mt-6 block">
+              <span className="label">Ghi chú đăng ký</span>
+              <textarea
+                className="input h-28 py-3"
+                value={note}
+                onChange={(event) => setNote(event.target.value)}
+                placeholder="Ví dụ: Em sẽ tham gia đầy đủ, có thể hỗ trợ chuẩn bị..."
+              />
+            </label>
+          )}
+          <div className="mt-6 grid gap-4 sm:grid-cols-3">
+            <StatCard
+              label="Đã đăng ký"
+              value={`${activity.registeredCount}/${activity.capacity ?? "∞"}`}
+              icon={Users}
+            />
+            <StatCard
+              label="Đã check-in"
+              value={String(activity.checkedInCount)}
+              icon={CheckCircle2}
+              tone="green"
+            />
+            <StatCard
+              label="Điểm check-in"
+              value={String(activity.checkInPoints)}
+              icon={Star}
+              tone="blue"
+            />
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Thời gian">
+          <div className="space-y-4 text-sm text-muted">
+            <div>
+              <div className="font-bold text-ink">Ngày diễn ra</div>
+              <div>{formatEventDate(activity.startTime)}</div>
+            </div>
+            <div>
+              <div className="font-bold text-ink">Thời gian</div>
+              <div>{formatEventTimeRange(activity.startTime, activity.endTime)}</div>
+            </div>
+            <div>
+              <div className="font-bold text-ink">Hạn đăng ký</div>
+              <div>
+                {activity.registrationDeadline
+                  ? `${formatEventDate(activity.registrationDeadline)} · ${formatEventTimeRange(activity.registrationDeadline, null)}`
+                  : "Không giới hạn"}
+              </div>
+            </div>
+            <div>
+              <div className="font-bold text-ink">Trạng thái</div>
+              <StatusBadge status={activity.status} />
+            </div>
+          </div>
+        </SectionCard>
+      </div>
+    </main>
+  );
+}
+
 function membersPreview() {
   return [
     {

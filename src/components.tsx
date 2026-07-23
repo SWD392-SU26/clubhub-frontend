@@ -479,6 +479,7 @@ const studentNav = [
   ["/dashboard", "Tổng quan", LayoutDashboard],
   ["/my-clubs", "Câu lạc bộ", Users],
   ["/my-events", "Sự kiện", CalendarDays],
+  ["/my-activities", "Hoạt động", ListChecks],
   ["/club-proposals", "Đề xuất CLB", ClipboardCheck],
   ["/activity/points", "Điểm", Trophy],
   ["/notifications", "Thông báo", Bell],
