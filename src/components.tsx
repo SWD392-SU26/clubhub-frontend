@@ -31,6 +31,7 @@ import {
   ScanLine,
   Building2,
   ClipboardList,
+  UserCog,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { authApi } from "./api/authApi";
@@ -329,10 +330,10 @@ export function PublicHeader() {
     : isUniversityAdmin
       ? "/system-admin/account/security"
       : "/account/security";
-  const workspace = hasAdminClub
-    ? "Club Admin workspace"
-    : isUniversityAdmin
-      ? "University Admin workspace"
+  const workspace = isUniversityAdmin
+    ? "Trang quản trị viên đại học"
+    : hasAdminClub
+      ? "Club Admin workspace"
       : "Student workspace";
 
   return (
@@ -609,10 +610,11 @@ const clubAdminNav: NavItem[] = [
   ["/club-admin/feedback", "Feedback", MessageSquare],
 ];
 const systemAdminNav: NavItem[] = [
-  ["/system-admin", "Dashboard", LayoutDashboard],
-  ["/system-admin/proposals", "Phê duyệt CLB", ClipboardCheck],
+  ["/system-admin", "Tổng quan", LayoutDashboard],
+  ["/system-admin/proposals", "Quản lý hồ sơ CLB", ClipboardCheck],
   ["/system-admin/clubs", "Quản lý CLB", Building2],
   ["/system-admin/users", "Người dùng", Users],
+  ["/system-admin/club-admins", "Quản trị viên CLB", UserCog],
   ["/system-admin/statistics", "Báo cáo", FileChartColumn],
   ["/system-admin/audit-log", "Nhật ký hệ thống", History],
   ["/system-admin/settings", "Cài đặt", Settings],
@@ -623,7 +625,7 @@ export function AdminLayout({ system = false }: { system?: boolean }) {
   const nav = system ? systemAdminNav : clubAdminNav;
   const homePath = system ? "/system-admin" : "/club-admin";
   const workspaceLabel = system
-    ? "University Admin workspace"
+    ? "Trang quản trị viên đại học"
     : adminClubName
       ? `${adminClubName} workspace`
       : "Club Admin workspace";
@@ -687,7 +689,7 @@ export function AdminLayout({ system = false }: { system?: boolean }) {
       </nav>
       <div className="mt-auto border-t border-white/20 pt-5">
         <UserProfileMenu
-          name={system ? "System Admin" : "Club Admin"}
+          name={system ? "Quản trị viên đại học" : "Club Admin"}
           initials={system ? "SA" : "CA"}
           workspace={workspaceLabel}
           profilePath={system ? "/system-admin/profile" : "/club-admin/profile"}
@@ -739,6 +741,12 @@ export function AdminLayout({ system = false }: { system?: boolean }) {
             )}
           </div>
         </header>
+        <button
+          className="btn-ghost fixed left-4 top-4 z-30 bg-white shadow-card lg:hidden"
+          onClick={() => setOpen(true)}
+        >
+          <Menu />
+        </button>
         <Outlet />
       </div>
     </div>
@@ -939,7 +947,7 @@ export function DataTable({
         <thead className="bg-slate-100 text-xs uppercase text-muted">
           <tr>
             {columns.map((c) => (
-              <th key={c} className="px-5 py-4">
+              <th key={c} className="px-5 py-4 last:text-center">
                 {c}
               </th>
             ))}
@@ -949,7 +957,7 @@ export function DataTable({
           {rows.map((row, i) => (
             <tr key={i} className="border-t hover:bg-primary-soft/50">
               {row.map((cell, j) => (
-                <td key={j} className="px-5 py-4">
+                <td key={j} className="px-5 py-4 last:text-center">
                   {cell}
                 </td>
               ))}

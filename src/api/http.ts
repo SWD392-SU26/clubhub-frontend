@@ -3,6 +3,7 @@ import {
   clearAuthSession,
   getAccessToken,
   getRefreshToken,
+  normalizeLoginResponse,
   setAuthSession,
 } from "./authStorage";
 import type { LoginResponse } from "../types/auth";
@@ -41,19 +42,6 @@ function getErrorMessage(
   }
 
   return json?.message ?? json?.title ?? fallback;
-}
-
-function normalizeLoginResponse(data: LoginResponse): LoginResponse {
-  const role = data.profile.role ?? data.profile.systemRole ?? "Student";
-
-  return {
-    ...data,
-    profile: {
-      ...data.profile,
-      role,
-      systemRole: role,
-    },
-  };
 }
 
 async function refreshSession() {
@@ -103,9 +91,12 @@ export async function apiRequest<T>(
 ): Promise<T> {
   const token = getAccessToken();
 
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
+  const isFormData = options.body instanceof FormData;
+  const headers: Record<string, string> = isFormData
+    ? {}
+    : {
+        "Content-Type": "application/json",
+      };
 
   if (options.headers) {
     Object.assign(headers, options.headers);

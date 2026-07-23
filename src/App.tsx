@@ -39,6 +39,11 @@ import {
   StudentDashboard,
 } from "./pages/StudentPages";
 import {
+  ClubAdminsPage,
+  ClubAuditLogPage,
+  ClubSettingsPage,
+  ClubStatisticsPage,
+  ClubStatusPage,
   OfficialClubCreatePage,
   PlatformStatisticsPage,
   ProposalReviewPage,
@@ -226,7 +231,15 @@ export default function App() {
             />
             <Route path="/system-admin/users" element={<UsersManagementPage />} />
             <Route
+              path="/system-admin/club-admins"
+              element={<ClubAdminsPage />}
+            />
+            <Route
               path="/system-admin/users/:id"
+              element={<UserSecurityDetailPage />}
+            />
+            <Route
+              path="/system-admin/club-admins/:id"
               element={<UserSecurityDetailPage />}
             />
             <Route

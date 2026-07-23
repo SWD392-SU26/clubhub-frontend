@@ -3,6 +3,11 @@ export type SystemRole =
   | "ClubMember"
   | "ClubAdmin"
   | "UniversityAdmin";
+export type BackendRole =
+  | "Student"
+  | "ClubMember"
+  | "ClubAdmin"
+  | "UniversityAdmin";
 
 export type UserProfile = {
   id: string;
@@ -12,9 +17,9 @@ export type UserProfile = {
   studentCode?: string | null;
   phone?: string | null;
   avatarUrl?: string | null;
-  role: SystemRole;
-  systemRole?: SystemRole;
-  status?: "Active" | "Inactive" | "Lock" | "Deleted" | string;
+  role?: BackendRole | string;
+  systemRole: SystemRole;
+  status?: string;
   isEmailVerified?: boolean;
   createdAt: string;
 };
@@ -68,3 +73,4 @@ export type UpdateProfileRequest = {
   phone?: string;
   avatarUrl?: string;
 };
+
