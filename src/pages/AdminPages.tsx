@@ -29,11 +29,13 @@ import {
   AlertTriangle,
   ArrowLeft,
   BadgeCheck,
+  ClipboardCheck,
   Mail,
   Phone,
   UserCog,
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import type { ComponentType } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { adminApi } from "../api/adminApi";
 import { clubApi } from "../api/clubApi";
@@ -49,13 +51,14 @@ import type {
   AdminUserProfile,
   AdminUserRole,
   AdminUserStatus,
+  AuditLogItem,
 } from "../types/admin";
 import type {
   ProposalDetail,
   ProposalStatus,
   ProposalSummary,
 } from "../types/proposal";
-import type { ClubDetail } from "../types/club";
+import type { ClubDetail, ClubOfficer } from "../types/club";
 import {
   DataTable,
   EmptyState,
@@ -865,6 +868,18 @@ function formatAdminDate(value?: string | null) {
   }).format(new Date(value));
 }
 
+function formatAdminDateTime(value?: string | null) {
+  if (!value) return "Chưa có";
+
+  return new Intl.DateTimeFormat("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
 function getImageFileName(file: File | null) {
   return file ? file.name : "Chưa chọn ảnh";
 }
@@ -885,6 +900,28 @@ function clubAdminMatchesSearch(user: AdminUserProfile, search: string) {
   return [user.fullName, user.username, user.email]
     .filter(Boolean)
     .some((value) => String(value).toLowerCase().includes(keyword));
+}
+
+type ClubOfficerDisplay = ClubOfficer & {
+  email?: string;
+};
+
+function enrichClubOfficers(
+  officers: ClubOfficer[] = [],
+  clubAdmins: AdminUserProfile[] = [],
+): ClubOfficerDisplay[] {
+  const adminById = new Map(clubAdmins.map((user) => [user.id, user]));
+
+  return officers.map((officer) => {
+    const admin = adminById.get(officer.userId);
+
+    return {
+      ...officer,
+      fullName: officer.fullName || admin?.fullName || admin?.username || "Chưa có tên",
+      avatarUrl: officer.avatarUrl ?? admin?.avatarUrl,
+      email: admin?.email,
+    };
+  });
 }
 
 function getRoleLabel(role: string) {
@@ -927,6 +964,79 @@ function getProposalStatusLabel(status: string) {
   return labels[status] ?? status;
 }
 
+function getAuditEntityLabel(entityType: string) {
+  const labels: Record<string, string> = {
+    Club: "Câu lạc bộ",
+    ClubMember: "Thành viên CLB",
+    Event: "Sự kiện",
+    EventRegistration: "Đăng ký sự kiện",
+    Proposal: "Hồ sơ CLB",
+    ClubActivity: "Hoạt động CLB",
+    ActivityRegistration: "Ghi nhận hoạt động",
+  };
+
+  return labels[entityType] ?? entityType;
+}
+
+function getAuditActionLabel(action: string) {
+  const labels: Record<string, string> = {
+    Submit: "Nộp hồ sơ",
+    Update: "Cập nhật",
+    Resubmit: "Nộp lại",
+    Approve: "Duyệt",
+    Reject: "Từ chối",
+    RequestRevision: "Yêu cầu bổ sung",
+    Create: "Tạo mới",
+    CreateWithAdmin: "Tạo CLB chính thức",
+    Hide: "Ẩn",
+    Lock: "Khóa",
+    Archive: "Lưu trữ",
+    Reopen: "Mở lại",
+    Dissolve: "Giải tán",
+    HardDelete: "Xóa cứng",
+    SoftDelete: "Xóa mềm",
+    RequestJoin: "Gửi yêu cầu tham gia",
+    CancelJoinRequest: "Hủy yêu cầu tham gia",
+    ApproveJoin: "Duyệt thành viên",
+    RejectJoin: "Từ chối thành viên",
+    LeaveClub: "Rời CLB",
+    RemoveMember: "Xóa thành viên",
+    AssignRole: "Gán vai trò",
+    TransferAdmin: "Chuyển quyền quản trị",
+    NominateSuccessor: "Đề cử kế nhiệm",
+    AcceptSuccession: "Nhận quyền kế nhiệm",
+    RejectSuccession: "Từ chối kế nhiệm",
+    Cancel: "Hủy",
+    CancelEvent: "Hủy sự kiện",
+    Register: "Đăng ký",
+    CancelRegistration: "Hủy đăng ký",
+    CheckIn: "Điểm danh",
+  };
+
+  return labels[action] ?? action;
+}
+
+function auditMatchesSearch(
+  log: AuditLogItem,
+  clubName: string,
+  search: string,
+) {
+  const keyword = search.trim().toLowerCase();
+  if (!keyword) return true;
+
+  return [
+    clubName,
+    log.entityType,
+    getAuditEntityLabel(log.entityType),
+    log.action,
+    getAuditActionLabel(log.action),
+    log.performedByName,
+    log.description,
+  ]
+    .filter(Boolean)
+    .some((value) => String(value).toLowerCase().includes(keyword));
+}
+
 function ProposalStatusBadge({ status }: { status: string }) {
   const cls =
     status === "Approved"
@@ -963,6 +1073,40 @@ function AdminStatusBadge({ status }: { status: string }) {
     <span className={`${cls} inline-flex whitespace-nowrap`}>
       {getStatusLabel(status)}
     </span>
+  );
+}
+
+function CompactStatCard({
+  label,
+  value,
+  icon: Icon,
+  tone = "primary",
+}: {
+  label: string;
+  value: string;
+  icon: ComponentType<{
+    className?: string;
+  }>;
+  tone?: "primary" | "blue" | "green" | "slate" | "red";
+}) {
+  const tones = {
+    primary: "bg-primary-soft text-primary",
+    blue: "bg-fpt-blue-soft text-fpt-blue",
+    green: "bg-fpt-green-soft text-fpt-green-dark",
+    slate: "bg-slate-100 text-slate-600",
+    red: "bg-red-50 text-red-700",
+  };
+
+  return (
+    <div className="card flex items-center gap-4 p-4">
+      <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${tones[tone]}`}>
+        <Icon className="h-5 w-5" />
+      </div>
+      <div className="min-w-0">
+        <div className="truncate text-sm font-semibold text-muted">{label}</div>
+        <div className="text-2xl font-extrabold text-ink">{value}</div>
+      </div>
+    </div>
   );
 }
 
@@ -1294,30 +1438,93 @@ export function SystemAdminDashboard() {
   const displayName = getProfileDisplayName(profile);
   const [userCount, setUserCount] = useState<number | null>(null);
   const [clubAdminCount, setClubAdminCount] = useState<number | null>(null);
-  const [lockedCount, setLockedCount] = useState<number | null>(null);
+  const [clubCount, setClubCount] = useState<number | null>(null);
+  const [proposalQueueCount, setProposalQueueCount] = useState<number | null>(
+    null,
+  );
+  const [proposalQueue, setProposalQueue] = useState<Array<
+    ProposalSummary & {
+      submitterName?: string;
+    }
+  >>([]);
+  const [overviewLoading, setOverviewLoading] = useState(true);
+  const [overviewError, setOverviewError] = useState("");
 
   useEffect(() => {
     let ignore = false;
 
     async function loadOverview() {
+      setOverviewLoading(true);
+      setOverviewError("");
+
       try {
-        const [usersResult, clubAdmins] = await Promise.all([
+        const [
+          usersResult,
+          clubAdmins,
+          clubsResult,
+          pendingProposals,
+          revisionProposals,
+        ] = await Promise.all([
           adminApi.getUsers({ page: 1, pageSize: 200 }),
           adminApi.getClubAdmins(),
+          adminApi.getClubs({ page: 1, pageSize: 1 }),
+          proposalApi.getAllProposals({
+            status: "Pending",
+            page: 1,
+            pageSize: 5,
+          }),
+          proposalApi.getAllProposals({
+            status: "NeedsRevision",
+            page: 1,
+            pageSize: 5,
+          }),
         ]);
+        const queueCandidates = [
+          ...pendingProposals.items,
+          ...revisionProposals.items,
+        ]
+          .sort(
+            (first, second) =>
+              new Date(second.submittedAt).getTime() -
+              new Date(first.submittedAt).getTime(),
+          )
+          .slice(0, 5);
+        const hydratedQueue = await Promise.all(
+          queueCandidates.map(async (proposal) => {
+            try {
+              const detail = await proposalApi.getProposalById(proposal.id);
+              return { ...proposal, submitterName: detail.submitterName };
+            } catch {
+              return proposal;
+            }
+          }),
+        );
 
         if (!ignore) {
           setUserCount(usersResult.totalCount);
           setClubAdminCount(clubAdmins.length);
-          setLockedCount(
-            usersResult.items.filter((user) => user.status === "Lock").length,
+          setClubCount(clubsResult.totalCount);
+          setProposalQueueCount(
+            pendingProposals.totalCount + revisionProposals.totalCount,
           );
+          setProposalQueue(hydratedQueue);
         }
-      } catch {
+      } catch (err) {
         if (!ignore) {
           setUserCount(null);
           setClubAdminCount(null);
-          setLockedCount(null);
+          setClubCount(null);
+          setProposalQueueCount(null);
+          setProposalQueue([]);
+          setOverviewError(
+            err instanceof Error
+              ? err.message
+              : "Không thể tải số liệu tổng quan.",
+          );
+        }
+      } finally {
+        if (!ignore) {
+          setOverviewLoading(false);
         }
       }
     }
@@ -1348,8 +1555,17 @@ export function SystemAdminDashboard() {
           </>
         }
       />
+      {overviewError && (
+        <div className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
+          {overviewError}
+        </div>
+      )}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Tổng CLB" value="158" icon={FileCheck2} />
+        <StatCard
+          label="Tổng CLB"
+          value={clubCount === null ? "--" : String(clubCount)}
+          icon={FileCheck2}
+        />
         <StatCard
           label="Người dùng"
           value={userCount === null ? "--" : String(userCount)}
@@ -1363,9 +1579,11 @@ export function SystemAdminDashboard() {
           tone="green"
         />
         <StatCard
-          label="Tài khoản khóa"
-          value={lockedCount === null ? "--" : String(lockedCount)}
-          icon={Lock}
+          label="Hồ sơ cần xử lý"
+          value={
+            proposalQueueCount === null ? "--" : String(proposalQueueCount)
+          }
+          icon={ClipboardCheck}
           tone="red"
         />
       </div>
@@ -1378,20 +1596,41 @@ export function SystemAdminDashboard() {
             </Link>
           }
         >
-          <DataTable
-            columns={["Tên CLB", "Chủ quản", "Ngày gửi", "Thao tác"]}
-            rows={proposals.map((p) => [
-              p.name,
-              p.founder,
-              p.date,
-              <Link
-                className="btn-ghost"
-                to={`/system-admin/proposals/${p.id}`}
-              >
-                Xem
-              </Link>,
-            ])}
-          />
+          {overviewLoading ? (
+            <EmptyState
+              title="Đang tải hàng đợi"
+              description="Các hồ sơ cần xử lý sẽ hiển thị ngay khi sẵn sàng."
+            />
+          ) : proposalQueue.length === 0 ? (
+            <EmptyState
+              title="Không có hồ sơ chờ xử lý"
+              description="Các hồ sơ mới hoặc cần bổ sung sẽ xuất hiện tại đây."
+            />
+          ) : (
+            <DataTable
+              columns={[
+                "Tên CLB",
+                "Người nộp",
+                "Ngày gửi",
+                "Trạng thái",
+                "Thao tác",
+              ]}
+              rows={proposalQueue.map((proposal) => [
+                <span className="font-bold text-ink">
+                  {proposal.clubName}
+                </span>,
+                proposal.submitterName || proposal.founderInfo,
+                formatAdminDate(proposal.submittedAt),
+                <ProposalStatusBadge status={proposal.status} />,
+                <Link
+                  className="btn-ghost"
+                  to={`/system-admin/proposals/${proposal.id}`}
+                >
+                  Xem
+                </Link>,
+              ])}
+            />
+          )}
         </SectionCard>
         <SectionCard title="Lối tắt vận hành">
           <div className="grid gap-3">
@@ -1905,6 +2144,9 @@ export function SystemClubsPage() {
     hasNext: boolean;
     hasPrev: boolean;
   } | null>(null);
+  const [clubOfficerMap, setClubOfficerMap] = useState<
+    Record<string, ClubOfficerDisplay[]>
+  >({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [statusClub, setStatusClub] = useState<AdminClubSummary | null>(null);
@@ -1918,15 +2160,35 @@ export function SystemClubsPage() {
       setError("");
 
       try {
-        const result = await adminApi.getClubs({
-          status,
-          clubcategories: category,
-          page,
-          pageSize: 10,
-        });
+        const [result, clubAdmins] = await Promise.all([
+          adminApi.getClubs({
+            status,
+            clubcategories: category,
+            page,
+            pageSize: 10,
+          }),
+          adminApi.getClubAdmins(),
+        ]);
+
+        const details = await Promise.allSettled(
+          result.items.map((club) => clubApi.getClubById(club.id)),
+        );
+
+        const nextOfficerMap = result.items.reduce<
+          Record<string, ClubOfficerDisplay[]>
+        >((map, club, index) => {
+          const detail = details[index];
+          map[club.id] =
+            detail?.status === "fulfilled"
+              ? enrichClubOfficers(detail.value.officers, clubAdmins)
+              : [];
+
+          return map;
+        }, {});
 
         if (!ignore) {
           setClubsResult(result);
+          setClubOfficerMap(nextOfficerMap);
         }
       } catch (err) {
         if (!ignore) {
@@ -1963,11 +2225,15 @@ export function SystemClubsPage() {
           club.status,
           getStatusLabel(club.status),
           club.description,
+          ...(clubOfficerMap[club.id] ?? []).flatMap((officer) => [
+            officer.fullName,
+            officer.email,
+          ]),
         ]
           .filter(Boolean)
           .some((value) => String(value).toLowerCase().includes(keyword));
       }),
-    [clubsResult?.items, search],
+    [clubOfficerMap, clubsResult?.items, search],
   );
 
   async function handleStatusUpdate(nextStatus: AdminClubStatus) {
@@ -2093,7 +2359,24 @@ export function SystemClubsPage() {
                 )}
               </div>,
               getClubCategoryLabel(club.category),
-              "Chưa có dữ liệu",
+              <div className="min-w-[220px] space-y-2">
+                {(clubOfficerMap[club.id] ?? []).length > 0 ? (
+                  (clubOfficerMap[club.id] ?? []).map((officer) => (
+                    <div key={officer.userId} className="min-w-0">
+                      <div className="truncate font-semibold text-ink">
+                        {officer.fullName}
+                      </div>
+                      <div className="truncate text-xs text-muted">
+                        {officer.email || "Chưa có email"}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <span className="text-sm text-muted">
+                    Chưa có quản trị viên phụ trách
+                  </span>
+                )}
+              </div>,
               String(club.memberCount ?? 0),
               <div className="min-w-max">
                 <AdminStatusBadge status={club.status} />
@@ -2387,6 +2670,9 @@ export function SystemClubDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [club, setClub] = useState<ClubDetail | null>(null);
+  const [clubAdminProfiles, setClubAdminProfiles] = useState<
+    AdminUserProfile[]
+  >([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [statusClub, setStatusClub] = useState<ClubDetail | null>(null);
@@ -2406,10 +2692,14 @@ export function SystemClubDetailPage() {
       setError("");
 
       try {
-        const result = await clubApi.getClubById(id);
+        const [result, clubAdmins] = await Promise.all([
+          clubApi.getClubById(id),
+          adminApi.getClubAdmins(),
+        ]);
 
         if (!ignore) {
           setClub(result.status === "Deleted" ? null : result);
+          setClubAdminProfiles(clubAdmins);
           if (result.status === "Deleted") {
             setError("Câu lạc bộ này đã bị xóa.");
           }
@@ -2491,7 +2781,7 @@ export function SystemClubDetailPage() {
     );
   }
 
-  const officers = club.officers ?? [];
+  const officers = enrichClubOfficers(club.officers, clubAdminProfiles);
   const members = club.members ?? [];
 
   return (
@@ -2613,6 +2903,9 @@ export function SystemClubDetailPage() {
                         {officer.fullName}
                       </div>
                       <div className="text-sm text-muted">
+                        {officer.email || "Chưa có email"}
+                      </div>
+                      <div className="text-xs font-semibold text-muted">
                         {getRoleLabel(officer.roleInClub)}
                       </div>
                     </div>
@@ -2850,10 +3143,20 @@ export function UsersManagementPage() {
 export function ClubAdminsPage() {
   const [clubAdmins, setClubAdmins] = useState<AdminUserProfile[]>([]);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [category, setCategory] = useState<AdminClubCategory | "">("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [statusUser, setStatusUser] = useState<AdminUserProfile | null>(null);
   const [updating, setUpdating] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(search.trim());
+    }, 350);
+
+    return () => window.clearTimeout(timer);
+  }, [search]);
 
   useEffect(() => {
     let ignore = false;
@@ -2863,7 +3166,10 @@ export function ClubAdminsPage() {
       setError("");
 
       try {
-        const result = await adminApi.getClubAdmins();
+        const result = await adminApi.getClubAdmins({
+          category,
+          searchTerm: debouncedSearch || undefined,
+        });
 
         if (!ignore) {
           setClubAdmins(result.filter((user) => user.status !== "Deleted"));
@@ -2888,12 +3194,9 @@ export function ClubAdminsPage() {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [category, debouncedSearch]);
 
-  const visibleAdmins = useMemo(
-    () => clubAdmins.filter((user) => userMatchesSearch(user, search)),
-    [clubAdmins, search],
-  );
+  const visibleAdmins = clubAdmins;
 
   async function handleStatusUpdate(nextStatus: AdminUserStatus) {
     if (!statusUser) return;
@@ -2925,26 +3228,20 @@ export function ClubAdminsPage() {
         description="Theo dõi các tài khoản đang phụ trách vận hành câu lạc bộ trong hệ thống."
       />
 
-      <FilterBar
-        placeholder="Tìm theo tên, tên đăng nhập, email, MSSV..."
-        value={search}
-        onChange={setSearch}
-      />
-
       {error && (
         <div className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
           {error}
         </div>
       )}
 
-      <div className="mb-5 grid gap-4 sm:grid-cols-3">
-        <StatCard
-          label="Quản trị viên đang hoạt động"
+      <div className="mb-5 grid gap-3 sm:grid-cols-3">
+        <CompactStatCard
+          label="Đang hoạt động"
           value={loading ? "--" : String(clubAdmins.length)}
           icon={UserCog}
         />
-        <StatCard
-          label="Email đã xác thực"
+        <CompactStatCard
+          label="Email xác thực"
           value={
             loading
               ? "--"
@@ -2953,13 +3250,34 @@ export function ClubAdminsPage() {
           icon={BadgeCheck}
           tone="green"
         />
-        <StatCard
-          label="Đang hiển thị"
+        <CompactStatCard
+          label="Kết quả lọc"
           value={loading ? "--" : String(visibleAdmins.length)}
           icon={Filter}
           tone="blue"
         />
       </div>
+
+      <FilterBar
+        placeholder="Tìm theo tên câu lạc bộ đang phụ trách..."
+        value={search}
+        onChange={setSearch}
+        actions={
+          <select
+            className="input w-full sm:w-56"
+            value={category}
+            onChange={(event) =>
+              setCategory(event.target.value as AdminClubCategory | "")
+            }
+          >
+            {CLUB_CATEGORY_OPTIONS.map((item) => (
+              <option key={item.value || "all"} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        }
+      />
 
       {loading ? (
         <SectionCard title="Đang tải dữ liệu">
@@ -3182,21 +3500,189 @@ export function UserSecurityDetailPage() {
   );
 }
 export function SystemAuditLogPage() {
+  const [logs, setLogs] = useState<AuditLogItem[]>([]);
+  const [clubOptions, setClubOptions] = useState<AdminClubSummary[]>([]);
+  const [clubId, setClubId] = useState("");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadAuditLogs() {
+      setLoading(true);
+      setError("");
+
+      try {
+        const clubsResult = await adminApi.getClubs({
+          page: 1,
+          pageSize: 100,
+        });
+        const clubs = clubsResult.items.filter(
+          (club) => club.status !== "Deleted",
+        );
+        const targetClubs = clubId
+          ? clubs.filter((club) => club.id === clubId)
+          : clubs;
+
+        const auditResults = await Promise.allSettled(
+          targetClubs.map((club) =>
+            adminApi.getClubAuditLogs(club.id, { page: 1, pageSize: 50 }),
+          ),
+        );
+        const mergedLogs = auditResults
+          .flatMap((result) =>
+            result.status === "fulfilled" ? result.value.items : [],
+          )
+          .sort(
+            (first, second) =>
+              new Date(second.createdAt).getTime() -
+              new Date(first.createdAt).getTime(),
+          );
+
+        if (!ignore) {
+          setClubOptions(clubs);
+          setLogs(mergedLogs);
+        }
+      } catch (err) {
+        if (!ignore) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Không thể tải nhật ký hệ thống.",
+          );
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadAuditLogs();
+
+    return () => {
+      ignore = true;
+    };
+  }, [clubId]);
+
+  const clubNameById = useMemo(
+    () => new Map(clubOptions.map((club) => [club.id, club.name])),
+    [clubOptions],
+  );
+  const filteredLogs = useMemo(
+    () =>
+      logs.filter((log) =>
+        auditMatchesSearch(
+          log,
+          log.clubId ? (clubNameById.get(log.clubId) ?? "") : "",
+          search,
+        ),
+      ),
+    [clubNameById, logs, search],
+  );
+  const totalPages = Math.max(1, Math.ceil(filteredLogs.length / 20));
+  const pageLogs = filteredLogs.slice((page - 1) * 20, page * 20);
+
+  useEffect(() => {
+    setPage(1);
+  }, [clubId, search]);
+
   return (
     <main className="page-shell">
-      <PageTitle title="Nhật ký kiểm toán hệ thống" />
-      <FilterBar placeholder="Tìm kiếm nhật ký..." />
-      <section className="card overflow-hidden">
-        <DataTable
-          columns={["Thời gian", "Tác nhân", "Hành động", "Trạng thái"]}
-          rows={auditLogs.map(([time, actor, text, status]) => [
-            time,
-            actor,
-            text,
-            <StatusBadge status={status} />,
-          ])}
+      <PageTitle
+        title="Nhật ký hệ thống"
+        description="Theo dõi các thao tác được ghi nhận trong từng câu lạc bộ như nộp hồ sơ, duyệt thành viên, tạo sự kiện và điểm danh."
+      />
+      <FilterBar
+        placeholder="Tìm theo CLB, người thực hiện, thao tác..."
+        value={search}
+        onChange={setSearch}
+        actions={
+          <select
+            className="input w-full sm:w-64"
+            value={clubId}
+            onChange={(event) => setClubId(event.target.value)}
+          >
+            <option value="">Tất cả câu lạc bộ</option>
+            {clubOptions.map((club) => (
+              <option key={club.id} value={club.id}>
+                {club.name}
+              </option>
+            ))}
+          </select>
+        }
+      />
+
+      {error && (
+        <div className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
+          {error}
+        </div>
+      )}
+
+      {loading ? (
+        <SectionCard title="Đang tải dữ liệu">
+          <EmptyState
+            title="Đang tải nhật ký hệ thống"
+            description="Dữ liệu sẽ hiển thị ngay khi sẵn sàng."
+          />
+        </SectionCard>
+      ) : filteredLogs.length === 0 ? (
+        <EmptyState
+          title="Chưa có nhật ký phù hợp"
+          description="Thử đổi câu lạc bộ hoặc từ khóa tìm kiếm."
         />
-      </section>
+      ) : (
+        <>
+          <section className="card overflow-hidden">
+            <DataTable
+              columns={[
+                "Thời gian",
+                "Câu lạc bộ",
+                "Người thực hiện",
+                "Đối tượng",
+                "Thao tác",
+                "Mô tả",
+              ]}
+              rows={pageLogs.map((log) => [
+                formatAdminDateTime(log.createdAt),
+                log.clubId ? (clubNameById.get(log.clubId) ?? "Không rõ") : "Không rõ",
+                log.performedByName || "Hệ thống",
+                getAuditEntityLabel(log.entityType),
+                <StatusBadge status={getAuditActionLabel(log.action)} />,
+                <div className="min-w-[240px] text-sm text-muted">
+                  {log.description || "Không có mô tả"}
+                </div>,
+              ])}
+            />
+          </section>
+          <div className="mt-5 flex flex-col gap-3 rounded-xl border bg-white px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+            <span className="text-muted">
+              Trang {page}/{totalPages} · {filteredLogs.length} nhật ký
+            </span>
+            <div className="flex gap-2">
+              <button
+                className="btn-secondary"
+                disabled={page <= 1}
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+              >
+                Trước
+              </button>
+              <button
+                className="btn-secondary"
+                disabled={page >= totalPages}
+                onClick={() =>
+                  setPage((current) => Math.min(totalPages, current + 1))
+                }
+              >
+                Sau
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </main>
   );
 }

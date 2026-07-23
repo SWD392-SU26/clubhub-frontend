@@ -7,6 +7,7 @@ import type {
   AdminUserStatus,
   AdminUsersResult,
   AdminUserProfile,
+  AuditLogsResult,
   CreateClubWithAdminRequest,
 } from "../types/admin";
 
@@ -85,5 +86,29 @@ export const adminApi = {
       method: "PUT",
       body: JSON.stringify({ status }),
     });
+  },
+
+  getClubAuditLogs(clubId: string, params: {
+    page?: number;
+    pageSize?: number;
+  } = {}) {
+    return apiRequest<AuditLogsResult>(
+      `/api/clubs/${clubId}/audit-logs${toQuery({
+        page: params.page ?? 1,
+        pageSize: params.pageSize ?? 20,
+      })}`,
+    );
+  },
+
+  getEntityAuditLogs(entityType: string, entityId: string, params: {
+    page?: number;
+    pageSize?: number;
+  } = {}) {
+    return apiRequest<AuditLogsResult>(
+      `/api/audit-logs/${encodeURIComponent(entityType)}/${entityId}${toQuery({
+        page: params.page ?? 1,
+        pageSize: params.pageSize ?? 20,
+      })}`,
+    );
   },
 };

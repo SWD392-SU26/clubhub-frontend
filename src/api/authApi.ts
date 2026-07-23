@@ -13,19 +13,6 @@ import type {
   VerifyOtpRequest
 } from "../types/auth";
 
-function normalizeLoginResponse(data: LoginResponse): LoginResponse {
-  const role = data.profile.role ?? data.profile.systemRole ?? "Student";
-
-  return {
-    ...data,
-    profile: {
-      ...data.profile,
-      role,
-      systemRole: role,
-    },
-  };
-}
-
 export const authApi = {
   login(payload: LoginRequest) {
     return apiRequest<LoginResponse>("/login", {

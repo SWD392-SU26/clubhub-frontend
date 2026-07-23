@@ -3,6 +3,7 @@ import {
   clearAuthSession,
   getAccessToken,
   getRefreshToken,
+  normalizeLoginResponse,
   setAuthSession,
 } from "./authStorage";
 import type { LoginResponse } from "../types/auth";
@@ -41,19 +42,6 @@ function getErrorMessage(
   }
 
   return json?.message ?? json?.title ?? fallback;
-}
-
-function normalizeLoginResponse(data: LoginResponse): LoginResponse {
-  const role = data.profile.role ?? data.profile.systemRole ?? "Student";
-
-  return {
-    ...data,
-    profile: {
-      ...data.profile,
-      role,
-      systemRole: role,
-    },
-  };
 }
 
 async function refreshSession() {

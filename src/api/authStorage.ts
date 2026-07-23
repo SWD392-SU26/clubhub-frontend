@@ -7,10 +7,15 @@ const PROFILE_KEY = "clubhub_profile";
 export function normalizeUserProfile(profile: UserProfile): UserProfile {
   const backendRole = profile.systemRole ?? profile.role;
   const systemRole =
-    backendRole === "UniversityAdmin" ? "UniversityAdmin" : "Student";
+    backendRole === "UniversityAdmin" ||
+    backendRole === "ClubAdmin" ||
+    backendRole === "ClubMember"
+      ? backendRole
+      : "Student";
 
   return {
     ...profile,
+    role: backendRole ?? systemRole,
     systemRole,
   };
 }

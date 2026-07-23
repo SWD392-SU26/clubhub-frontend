@@ -330,10 +330,6 @@ export function PublicHeader() {
     : isUniversityAdmin
       ? "/system-admin/account/security"
       : "/account/security";
-  const workspace = hasAdminClub
-    ? "Club Admin workspace"
-    : isUniversityAdmin
-      ? "University Admin workspace"
   const workspace = isUniversityAdmin
     ? "Trang quản trị viên đại học"
     : hasAdminClub

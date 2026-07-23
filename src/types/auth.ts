@@ -3,7 +3,6 @@ export type SystemRole =
   | "ClubMember"
   | "ClubAdmin"
   | "UniversityAdmin";
-export type SystemRole = "Student" | "UniversityAdmin";
 export type BackendRole =
   | "Student"
   | "ClubMember"
@@ -18,10 +17,6 @@ export type UserProfile = {
   studentCode?: string | null;
   phone?: string | null;
   avatarUrl?: string | null;
-  role: SystemRole;
-  systemRole?: SystemRole;
-  status?: "Active" | "Inactive" | "Lock" | "Deleted" | string;
-  isEmailVerified?: boolean;
   role?: BackendRole | string;
   systemRole: SystemRole;
   status?: string;

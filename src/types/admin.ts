@@ -92,6 +92,19 @@ export type AdminClubSummary = {
 
 export type AdminClubsResult = PagedResult<AdminClubSummary>;
 
+export type AuditLogItem = {
+  id: string;
+  entityType: string;
+  entityId: string;
+  action: string;
+  performedByName?: string | null;
+  description?: string | null;
+  clubId?: string | null;
+  createdAt: string;
+};
+
+export type AuditLogsResult = PagedResult<AuditLogItem>;
+
 export type CreateClubWithAdminRequest = {
   name: string;
   category: AdminClubCategory;
