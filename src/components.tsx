@@ -30,6 +30,7 @@ import {
   Trophy,
   ScanLine,
   Building2,
+  UserCog,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { authApi } from "./api/authApi";
@@ -321,7 +322,7 @@ export function PublicHeader() {
       ? "/club-admin/account/security"
       : "/account/security";
   const workspace = isUniversityAdmin
-    ? "University Admin workspace"
+    ? "Trang quản trị viên đại học"
     : hasAdminClub
       ? "Club Admin workspace"
       : "Student workspace";
@@ -603,10 +604,11 @@ const clubAdminNav: NavItem[] = [
   ["/club-admin/settings", "Cài đặt", Settings],
 ];
 const systemAdminNav: NavItem[] = [
-  ["/system-admin", "Dashboard", LayoutDashboard],
-  ["/system-admin/proposals", "Phê duyệt CLB", ClipboardCheck],
+  ["/system-admin", "Tổng quan", LayoutDashboard],
+  ["/system-admin/proposals", "Quản lý hồ sơ CLB", ClipboardCheck],
   ["/system-admin/clubs", "Quản lý CLB", Building2],
   ["/system-admin/users", "Người dùng", Users],
+  ["/system-admin/club-admins", "Quản trị viên CLB", UserCog],
   ["/system-admin/statistics", "Báo cáo", FileChartColumn],
   ["/system-admin/audit-log", "Nhật ký hệ thống", History],
   ["/system-admin/settings", "Cài đặt", Settings],
@@ -617,7 +619,7 @@ export function AdminLayout({ system = false }: { system?: boolean }) {
   const nav = system ? systemAdminNav : clubAdminNav;
   const homePath = system ? "/system-admin" : "/club-admin";
   const workspaceLabel = system
-    ? "University Admin workspace"
+    ? "Trang quản trị viên đại học"
     : adminClubName
       ? `${adminClubName} workspace`
       : "Club Admin workspace";
@@ -681,7 +683,7 @@ export function AdminLayout({ system = false }: { system?: boolean }) {
       </nav>
       <div className="mt-auto border-t border-white/20 pt-5">
         <UserProfileMenu
-          name={system ? "System Admin" : "Club Admin"}
+          name={system ? "Quản trị viên đại học" : "Club Admin"}
           initials={system ? "SA" : "CA"}
           workspace={workspaceLabel}
           profilePath={system ? "/system-admin/profile" : "/club-admin/profile"}
@@ -710,29 +712,12 @@ export function AdminLayout({ system = false }: { system?: boolean }) {
         {sidebar}
       </MobilePanel>
       <div className="min-w-0">
-        <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b bg-white/95 px-4 backdrop-blur sm:px-6">
-          <button className="btn-ghost lg:hidden" onClick={() => setOpen(true)}>
-            <Menu />
-          </button>
-          <div className="hidden items-center gap-2 rounded-xl bg-slate-100 px-3 sm:flex">
-            <Search className="h-4 w-4 text-muted" />
-            <input
-              className="h-10 bg-transparent text-sm outline-none"
-              placeholder="Tìm kiếm nhanh..."
-            />
-          </div>
-          <div className="ml-auto flex items-center gap-2">
-            <button className="btn-ghost">
-              <Bell className="h-5 w-5" />
-            </button>
-            {!system && (
-              <Link to="/club-admin/events/new" className="btn-primary">
-                <PlusCircle className="h-4 w-4" />
-                Tạo sự kiện
-              </Link>
-            )}
-          </div>
-        </header>
+        <button
+          className="btn-ghost fixed left-4 top-4 z-30 bg-white shadow-card lg:hidden"
+          onClick={() => setOpen(true)}
+        >
+          <Menu />
+        </button>
         <Outlet />
       </div>
     </div>
@@ -921,7 +906,7 @@ export function DataTable({
         <thead className="bg-slate-100 text-xs uppercase text-muted">
           <tr>
             {columns.map((c) => (
-              <th key={c} className="px-5 py-4">
+              <th key={c} className="px-5 py-4 last:text-center">
                 {c}
               </th>
             ))}
@@ -931,7 +916,7 @@ export function DataTable({
           {rows.map((row, i) => (
             <tr key={i} className="border-t hover:bg-primary-soft/50">
               {row.map((cell, j) => (
-                <td key={j} className="px-5 py-4">
+                <td key={j} className="px-5 py-4 last:text-center">
                   {cell}
                 </td>
               ))}

@@ -89,9 +89,12 @@ export async function apiRequest<T>(
 ): Promise<T> {
   const token = getAccessToken();
 
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
+  const isFormData = options.body instanceof FormData;
+  const headers: Record<string, string> = isFormData
+    ? {}
+    : {
+        "Content-Type": "application/json",
+      };
 
   if (options.headers) {
     Object.assign(headers, options.headers);

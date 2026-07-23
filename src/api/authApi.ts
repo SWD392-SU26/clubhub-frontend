@@ -1,4 +1,5 @@
 import { apiRequest } from "./http";
+import { normalizeLoginResponse, normalizeUserProfile } from "./authStorage";
 import type {
   ChangePasswordRequest,
   ForgotPasswordRequest,
@@ -17,7 +18,7 @@ export const authApi = {
       method: "POST",
       body: JSON.stringify(payload),
       auth: false,
-    });
+    }).then(normalizeLoginResponse);
   },
 
   register(payload: RegisterRequest) {
@@ -33,7 +34,7 @@ export const authApi = {
       method: "POST",
       body: JSON.stringify(payload),
       auth: false,
-    });
+    }).then(normalizeLoginResponse);
   },
 
   logout() {
@@ -64,13 +65,13 @@ export const authApi = {
   },
 
   getMe() {
-    return apiRequest<UserProfile>("/me");
+    return apiRequest<UserProfile>("/me").then(normalizeUserProfile);
   },
 
   updateMe(payload: UpdateProfileRequest) {
     return apiRequest<UserProfile>("/me", {
       method: "PUT",
       body: JSON.stringify(payload),
-    });
+    }).then(normalizeUserProfile);
   },
 };

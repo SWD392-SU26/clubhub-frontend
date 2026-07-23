@@ -17,7 +17,7 @@ export type ClubCategory =
   | "Media"
   | "Entrepreneurship";
 
-export type ClubStatus = "Active" | "Hidden" | "Locked" | "Deleted";
+export type ClubStatus = "Active" | "Inactive" | "Lock" | "Deleted";
 
 export type ClubSummary = {
   id: string;
@@ -38,8 +38,19 @@ export type ClubOfficer = {
   roleInClub: ClubRole | string;
 };
 
+export type ClubMemberDetail = {
+  id: string;
+  userId: string;
+  fullName: string;
+  avatarUrl?: string | null;
+  studentCode?: string | null;
+  roleInClub: ClubRole | string;
+  joinedAt?: string | null;
+};
+
 export type ClubDetail = ClubSummary & {
   officers: ClubOfficer[];
+  members: ClubMemberDetail[];
 };
 
 export type ClubFilterRequest = {
