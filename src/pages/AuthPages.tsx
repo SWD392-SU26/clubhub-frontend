@@ -1,8 +1,6 @@
 ﻿import { FormEvent, useState } from "react";
 import { authApi } from "../api/authApi";
-import { membershipApi } from "../api/membershipApi";
 import { setAuthSession } from "../api/authStorage";
-import { hasClubAdminPermission } from "../clubPermissions";
 import {
   CheckCircle2,
   Eye,
@@ -163,18 +161,13 @@ export function LoginPage({ compact = false }: { compact?: boolean }) {
           : "";
       const isUniversityAdmin =
         (data.profile.role ?? data.profile.systemRole) === "UniversityAdmin";
-      const memberships = await membershipApi.getMyMemberships().catch(() => []);
-      const hasClubAdminAccess = hasClubAdminPermission(memberships);
-      const defaultPath = isUniversityAdmin
-        ? "/system-admin"
-        : hasClubAdminAccess
-          ? "/club-admin"
-          : "/dashboard";
+      const defaultPath = isUniversityAdmin ? "/system-admin" : "/dashboard";
       const canUseRequestedPath =
         requestedPath.startsWith("/") &&
         !requestedPath.startsWith("/login") &&
+        !requestedPath.startsWith("/club-admin") &&
         (requestedPath.startsWith("/club-admin")
-          ? !isUniversityAdmin && hasClubAdminAccess
+          ? false
           : requestedPath.startsWith("/system-admin")
             ? isUniversityAdmin
             : !isUniversityAdmin);

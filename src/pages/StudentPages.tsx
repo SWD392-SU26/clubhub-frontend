@@ -663,10 +663,10 @@ export function StudentDashboard() {
                   const membership = memberships.find(
                     (item) => item.clubId === club.id,
                   );
+                  const manager = isClubManager(membership);
 
                   return (
-                    <Link
-                      to={`/my-clubs/${club.id}`}
+                    <article
                       className="rounded-xl border p-4 transition hover:bg-primary-soft"
                       key={club.id}
                     >
@@ -685,7 +685,23 @@ export function StudentDashboard() {
                           </div>
                         </div>
                       </div>
-                    </Link>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <Link
+                          to={`/my-clubs/${club.id}`}
+                          className="btn-secondary flex-1 justify-center"
+                        >
+                          Chi tiết
+                        </Link>
+                        {manager && (
+                          <Link
+                            to="/club-admin"
+                            className="btn-primary flex-1 justify-center"
+                          >
+                            Quản trị
+                          </Link>
+                        )}
+                      </div>
+                    </article>
                   );
                 })}
               </div>
