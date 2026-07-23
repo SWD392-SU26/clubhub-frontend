@@ -45,21 +45,23 @@ export function RequireGuest() {
         return;
       }
 
-      if (profile?.systemRole === "UniversityAdmin") {
-        setHomePath("/system-admin");
-        return;
-      }
-
       try {
         const memberships = await membershipApi.getMyMemberships();
         if (!ignore) {
+          if (profile?.systemRole === "UniversityAdmin") {
+            setHomePath("/system-admin");
+            return;
+          }
+
           setHomePath(
-            hasClubAdminPermission(memberships) ? "/club-admin" : "/dashboard",
+            hasClubAdminPermission(memberships)
+              ? "/club-admin"
+              : getHomePath(profile),
           );
         }
       } catch {
         if (!ignore) {
-          setHomePath("/dashboard");
+          setHomePath(getHomePath(profile));
         }
       }
     }
@@ -72,10 +74,6 @@ export function RequireGuest() {
   }, [isAuthenticated, profile?.systemRole]);
 
   if (isAuthenticated) {
-    if (profile?.systemRole === "UniversityAdmin") {
-      return <Navigate to={getHomePath(profile)} replace />;
-    }
-
     if (!homePath) {
       return <GuardLoading message="Đang kiểm tra phiên đăng nhập..." />;
     }
@@ -99,21 +97,24 @@ export function RequireGuestLanding() {
         return;
       }
 
-      if (profile?.systemRole === "UniversityAdmin") {
-        setHomePath("/system-admin");
-        return;
-      }
-
       try {
         const memberships = await membershipApi.getMyMemberships();
         if (!ignore) {
+          if (profile?.systemRole === "UniversityAdmin") {
+            setHomePath("/system-admin");
+            return;
+          }
+
+          const hasClubAdminAccess = hasClubAdminPermission(memberships);
           setHomePath(
-            hasClubAdminPermission(memberships) ? "/club-admin" : "/dashboard",
+            hasClubAdminAccess
+              ? "/club-admin"
+              : getHomePath(profile),
           );
         }
       } catch {
         if (!ignore) {
-          setHomePath("/dashboard");
+          setHomePath(getHomePath(profile));
         }
       }
     }
@@ -127,10 +128,6 @@ export function RequireGuestLanding() {
 
   if (!isAuthenticated) {
     return <Outlet />;
-  }
-
-  if (profile?.systemRole === "UniversityAdmin") {
-    return <Navigate to={getHomePath(profile)} replace />;
   }
 
   if (!homePath) {
@@ -208,7 +205,7 @@ export function RequireClubAdmin() {
     let ignore = false;
 
     async function checkClubAdminPermission() {
-      if (!isAuthenticated || profile?.systemRole === "UniversityAdmin") {
+      if (!isAuthenticated) {
         setAllowed(null);
         return;
       }
@@ -242,10 +239,6 @@ export function RequireClubAdmin() {
         state={{ from: location.pathname, message: LOGIN_REQUIRED_MESSAGE }}
       />
     );
-  }
-
-  if (profile?.systemRole === "UniversityAdmin") {
-    return <Navigate to="/system-admin" replace />;
   }
 
   if (allowed === null) {

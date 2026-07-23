@@ -12,6 +12,7 @@ export type EventDto = {
   name: string;
   description?: string | null;
   location?: string | null;
+  imageUrl?: string | null;
   startTime: string;
   endTime: string;
   capacity?: number | null;
@@ -24,7 +25,21 @@ export type EventRegistration = {
   id: string;
   eventId: string;
   eventName: string;
+  eventImageUrl?: string | null;
   isCheckedIn: boolean;
   checkInTime?: string | null;
   registeredAt: string;
+};
+
+export type CreateEventRequest = {
+  name: string;
+  description?: string;
+  location?: string;
+  startTime: string;
+  endTime: string;
+  capacity?: number;
+};
+
+export type UpdateEventRequest = Partial<CreateEventRequest> & {
+  status?: EventStatus;
 };

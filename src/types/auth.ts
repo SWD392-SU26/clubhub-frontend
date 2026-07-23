@@ -1,3 +1,8 @@
+export type SystemRole =
+  | "Student"
+  | "ClubMember"
+  | "ClubAdmin"
+  | "UniversityAdmin";
 export type SystemRole = "Student" | "UniversityAdmin";
 export type BackendRole =
   | "Student"
@@ -13,6 +18,10 @@ export type UserProfile = {
   studentCode?: string | null;
   phone?: string | null;
   avatarUrl?: string | null;
+  role: SystemRole;
+  systemRole?: SystemRole;
+  status?: "Active" | "Inactive" | "Lock" | "Deleted" | string;
+  isEmailVerified?: boolean;
   role?: BackendRole | string;
   systemRole: SystemRole;
   status?: string;
@@ -48,8 +57,14 @@ export type ForgotPasswordRequest = {
   email: string;
 };
 
+export type VerifyOtpRequest = {
+  email: string;
+  otp: string;
+};
+
 export type ResetPasswordRequest = {
-  token: string;
+  email: string;
+  otp: string;
   newPassword: string;
 };
 
@@ -63,3 +78,4 @@ export type UpdateProfileRequest = {
   phone?: string;
   avatarUrl?: string;
 };
+

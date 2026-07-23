@@ -30,6 +30,7 @@ import {
   Trophy,
   ScanLine,
   Building2,
+  ClipboardList,
   UserCog,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -172,8 +173,16 @@ function UserProfileMenu({
         aria-expanded={open}
         aria-label="Mở menu tài khoản"
       >
-        <span className="grid h-9 w-9 place-items-center rounded-full bg-primary text-sm font-bold text-white">
-          {displayInitials}
+        <span className="grid h-9 w-9 place-items-center overflow-hidden rounded-full bg-primary text-sm font-bold text-white">
+          {profile?.avatarUrl ? (
+            <img
+              src={profile.avatarUrl}
+              alt={displayName}
+              className="block h-full w-full object-cover"
+            />
+          ) : (
+            displayInitials
+          )}
         </span>
         <ChevronDown
           className={`h-4 w-4 text-slate-500 transition ${open ? "rotate-180" : ""}`}
@@ -275,7 +284,7 @@ export function PublicHeader() {
   useEffect(() => {
     let active = true;
 
-    if (!profile || profile.systemRole === "UniversityAdmin") {
+    if (!profile) {
       setHasAdminClub(false);
       return () => {
         active = false;
@@ -301,26 +310,30 @@ export function PublicHeader() {
   }, [profile?.id, profile?.systemRole]);
 
   const isUniversityAdmin = profile?.systemRole === "UniversityAdmin";
-  const homePath = isUniversityAdmin
-    ? "/system-admin"
-    : hasAdminClub
-      ? "/club-admin"
+  const homePath = hasAdminClub
+    ? "/club-admin"
+    : isUniversityAdmin
+      ? "/system-admin"
       : "/dashboard";
-  const profilePath = isUniversityAdmin
-    ? "/system-admin/profile"
-    : hasAdminClub
-      ? "/club-admin/profile"
+  const profilePath = hasAdminClub
+    ? "/club-admin/profile"
+    : isUniversityAdmin
+      ? "/system-admin/profile"
       : "/profile";
-  const editProfilePath = isUniversityAdmin
-    ? "/system-admin/profile/edit"
-    : hasAdminClub
-      ? "/club-admin/profile/edit"
+  const editProfilePath = hasAdminClub
+    ? "/club-admin/profile/edit"
+    : isUniversityAdmin
+      ? "/system-admin/profile/edit"
       : "/profile/edit";
-  const securityPath = isUniversityAdmin
-    ? "/system-admin/account/security"
-    : hasAdminClub
-      ? "/club-admin/account/security"
+  const securityPath = hasAdminClub
+    ? "/club-admin/account/security"
+    : isUniversityAdmin
+      ? "/system-admin/account/security"
       : "/account/security";
+  const workspace = hasAdminClub
+    ? "Club Admin workspace"
+    : isUniversityAdmin
+      ? "University Admin workspace"
   const workspace = isUniversityAdmin
     ? "Trang quản trị viên đại học"
     : hasAdminClub
@@ -595,13 +608,10 @@ const clubAdminNav: NavItem[] = [
   ["/club-admin", "Dashboard", LayoutDashboard],
   ["/club-admin/members", "Thành viên", Users],
   ["/club-admin/join-requests", "Yêu cầu tham gia", ListChecks],
+  ["/club-admin/activities", "Hoạt động", ClipboardList],
   ["/club-admin/events", "Sự kiện", CalendarDays],
   ["/club-admin/check-in", "Check-in", ScanLine],
   ["/club-admin/feedback", "Feedback", MessageSquare],
-  ["/club-admin/points", "Điểm", Trophy],
-  ["/club-admin/statistics", "Thống kê", BarChart3],
-  ["/club-admin/audit-log", "Nhật ký", History],
-  ["/club-admin/settings", "Cài đặt", Settings],
 ];
 const systemAdminNav: NavItem[] = [
   ["/system-admin", "Tổng quan", LayoutDashboard],
@@ -712,6 +722,29 @@ export function AdminLayout({ system = false }: { system?: boolean }) {
         {sidebar}
       </MobilePanel>
       <div className="min-w-0">
+        <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b bg-white/95 px-4 backdrop-blur sm:px-6">
+          <button className="btn-ghost lg:hidden" onClick={() => setOpen(true)}>
+            <Menu />
+          </button>
+          <div className="hidden items-center gap-2 rounded-xl bg-slate-100 px-3 sm:flex">
+            <Search className="h-4 w-4 text-muted" />
+            <input
+              className="h-10 bg-transparent text-sm outline-none"
+              placeholder="Tìm kiếm nhanh..."
+            />
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            <button className="btn-ghost">
+              <Bell className="h-5 w-5" />
+            </button>
+            {!system && (
+              <Link to="/club-admin/activities/new" className="btn-primary">
+                <PlusCircle className="h-4 w-4" />
+                Tạo hoạt động
+              </Link>
+            )}
+          </div>
+        </header>
         <button
           className="btn-ghost fixed left-4 top-4 z-30 bg-white shadow-card lg:hidden"
           onClick={() => setOpen(true)}
@@ -883,13 +916,25 @@ export function EmptyState({
 }
 export function StatusBadge({ status }: { status: string }) {
   const s = status.toUpperCase();
+  const normalized = status
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase();
   const cls =
-    s.includes("ACTIVE") || s.includes("APPROVED") || s.includes("SUCCESS")
+    ["ACTIVE", "APPROVED", "SUCCESS", "CLUBADMIN", "CLUBMEMBER"].some(
+      (value) => normalized === value || normalized.includes(value),
+    )
       ? "status-active"
-      : s.includes("PENDING") || s.includes("DRAFT") || s.includes("CHỜ")
-        ? "status-pending"
-        : s.includes("REJECT") || s.includes("LOCK") || s.includes("CANCEL")
-          ? "status-danger"
+      : normalized === "INACTIVE" ||
+          normalized.includes("REJECT") ||
+          normalized.includes("LOCK") ||
+          normalized.includes("CANCEL") ||
+          normalized.includes("DELETED")
+        ? "status-danger"
+        : normalized.includes("PENDING") ||
+            normalized.includes("DRAFT") ||
+            normalized.includes("CHO")
+          ? "status-pending"
           : "status-info";
   return <span className={cls}>{status}</span>;
 }

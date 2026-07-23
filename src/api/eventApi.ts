@@ -1,7 +1,6 @@
 import { apiRequest } from "./http";
-import { clubApi } from "./clubApi";
 import type { PagedResult } from "../types/common";
-import type { EventDto, EventRegistration } from "../types/event";
+import type { CreateEventRequest, EventDto, EventRegistration, UpdateEventRequest } from "../types/event";
 
 function toQuery(params: Record<string, string | number | undefined>) {
   const searchParams = new URLSearchParams();
@@ -17,6 +16,13 @@ function toQuery(params: Record<string, string | number | undefined>) {
 }
 
 export const eventApi = {
+  getEvents(page = 1, pageSize = 10, clubId?: string) {
+    return apiRequest<PagedResult<EventDto>>(
+      `/api/events${toQuery({ page, pageSize, clubId })}`,
+      { auth: false },
+    );
+  },
+
   getClubEvents(clubId: string, page = 1, pageSize = 10) {
     return apiRequest<PagedResult<EventDto>>(
       `/api/clubs/${clubId}/events${toQuery({ page, pageSize })}`,
@@ -29,30 +35,19 @@ export const eventApi = {
   },
 
   async getPublicUpcomingEvents(limit = 20) {
-    const clubResult = await clubApi.getClubs({ page: 1, pageSize: 50 });
-    const eventResults = await Promise.all(
-      clubResult.items.map((club) =>
-        eventApi.getClubEvents(club.id, 1, 50).catch(() => null),
-      ),
-    );
+    const result = await eventApi.getEvents(1, Math.max(limit, 20));
     const now = Date.now();
-    const eventsById = new Map<string, EventDto>();
 
-    eventResults.forEach((result) => {
-      result?.items.forEach((event) => {
+    return result.items
+      .filter((event) => {
         const startTime = new Date(event.startTime).getTime();
 
-        if (
+        return (
           event.status === "Published" &&
           !Number.isNaN(startTime) &&
           startTime >= now
-        ) {
-          eventsById.set(event.id, event);
-        }
-      });
-    });
-
-    return Array.from(eventsById.values())
+        );
+      })
       .sort(
         (first, second) =>
           new Date(first.startTime).getTime() -
@@ -75,5 +70,33 @@ export const eventApi = {
     return apiRequest<boolean>(`/api/events/${eventId}/register`, {
       method: "DELETE",
     });
+  },
+
+  create(clubId: string, payload: CreateEventRequest) {
+    return apiRequest<EventDto>(`/api/clubs/${clubId}/events`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  update(eventId: string, payload: UpdateEventRequest) {
+    return apiRequest<EventDto>(`/api/events/${eventId}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  cancel(eventId: string) {
+    return apiRequest<boolean>(`/api/events/${eventId}`, { method: "DELETE" });
+  },
+
+  getRegistrations(eventId: string, page = 1, pageSize = 100) {
+    return apiRequest<PagedResult<EventRegistration>>(
+      `/api/events/${eventId}/registrations${toQuery({ page, pageSize })}`,
+    );
+  },
+
+  checkIn(eventId: string, userId: string) {
+    return apiRequest<boolean>(`/api/events/${eventId}/checkin/${userId}`, { method: "POST" });
   },
 };

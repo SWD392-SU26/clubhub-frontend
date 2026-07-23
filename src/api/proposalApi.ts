@@ -36,6 +36,13 @@ export const proposalApi = {
     });
   },
 
+  updateProposal(id: string, payload: SubmitProposalRequest) {
+    return apiRequest<ProposalSummary>(`/api/proposals/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  },
+
   getMyProposals() {
     return apiRequest<ProposalSummary[]>("/api/proposals/my");
   },

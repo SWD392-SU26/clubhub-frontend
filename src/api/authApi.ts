@@ -9,8 +9,22 @@ import type {
   ResetPasswordRequest,
   UpdateProfileRequest,
   UserProfile,
-  RefreshTokenRequest
+  RefreshTokenRequest,
+  VerifyOtpRequest
 } from "../types/auth";
+
+function normalizeLoginResponse(data: LoginResponse): LoginResponse {
+  const role = data.profile.role ?? data.profile.systemRole ?? "Student";
+
+  return {
+    ...data,
+    profile: {
+      ...data.profile,
+      role,
+      systemRole: role,
+    },
+  };
+}
 
 export const authApi = {
   login(payload: LoginRequest) {
@@ -22,7 +36,15 @@ export const authApi = {
   },
 
   register(payload: RegisterRequest) {
-    return apiRequest<LoginResponse>("/register", {
+    return apiRequest<boolean>("/register", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      auth: false,
+    });
+  },
+
+  verifyEmail(payload: VerifyOtpRequest) {
+    return apiRequest<unknown>("/verify-email", {
       method: "POST",
       body: JSON.stringify(payload),
       auth: false,

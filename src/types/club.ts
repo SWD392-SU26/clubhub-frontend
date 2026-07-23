@@ -1,4 +1,4 @@
-export type ClubRole = "Member" | "VicePresident" | "President" | "ClubAdmin";
+export type ClubRole = "ClubMember" | "ClubAdmin";
 
 export type MembershipStatus =
   | "Pending"
