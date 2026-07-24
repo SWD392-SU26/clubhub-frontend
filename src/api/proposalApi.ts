@@ -4,6 +4,7 @@ import type {
   ProposalsResult,
   ProposalSummary,
   ProposalStatus,
+  RequestRevisionRequest,
   ReviewProposalRequest,
   SubmitProposalRequest,
 } from "../types/proposal";
@@ -67,6 +68,14 @@ export const proposalApi = {
 
   reviewProposal(id: string, payload: ReviewProposalRequest) {
     return apiRequest<boolean>(`/api/proposals/${id}/review`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  requestRevision(id: string, revisionNote: string) {
+    const payload: RequestRevisionRequest = { revisionNote };
+    return apiRequest<boolean>(`/api/proposals/${id}/request-revision`, {
       method: "PUT",
       body: JSON.stringify(payload),
     });

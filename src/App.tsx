@@ -63,6 +63,7 @@ import {
   CancelEventPage,
   CheckInPage,
   ClubAdminDashboard,
+  ClubProfileSettingsPage,
   ClubJoinRequestsAdminPage,
   CreateActivityPage,
   CreateEventPage,
@@ -140,7 +141,11 @@ export default function App() {
               path="/club-proposals/new/step-5"
               element={<ProposalStepPage step={5} />}
             />
-            <Route path="/activity/points" element={<PointsHistoryPage />} />
+            <Route path="/points" element={<PointsHistoryPage />} />
+            <Route
+              path="/activity/points"
+              element={<Navigate to="/points" replace />}
+            />
           </Route>
         </Route>
         <Route element={<RequireClubAdmin />}>
@@ -201,6 +206,10 @@ export default function App() {
             <Route
               path="/club-admin/feedback"
               element={<FeedbackManagementPage />}
+            />
+            <Route
+              path="/club-admin/settings"
+              element={<ClubProfileSettingsPage />}
             />
           </Route>
         </Route>

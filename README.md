@@ -20,6 +20,24 @@ Build production:
 npm run build
 ```
 
+## Deploy Vercel
+
+Thiết lập project với:
+
+- Framework Preset: `Vite`
+- Build Command: `npm run build`
+- Output Directory: `dist`
+- Node.js: `20.19` trở lên
+
+Khai báo biến môi trường cho Production, Preview và Development:
+
+```text
+VITE_API_BASE_URL=https://your-backend-domain.example.com
+```
+
+URL backend phải dùng HTTPS khi frontend chạy trên Vercel. Không thêm dấu `/`
+ở cuối URL. File `vercel.json` đã cấu hình SPA fallback cho React Router.
+
 ## Route
 
 | Route | Screen |

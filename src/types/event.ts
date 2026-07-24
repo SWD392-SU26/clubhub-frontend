@@ -35,6 +35,7 @@ export type CreateEventRequest = {
   name: string;
   description?: string;
   location?: string;
+  imageUrl?: string;
   startTime: string;
   endTime: string;
   capacity?: number;

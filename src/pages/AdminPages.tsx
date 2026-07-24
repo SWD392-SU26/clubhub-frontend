@@ -1433,6 +1433,57 @@ function RejectProposalDialog({
   );
 }
 
+function RequestRevisionDialog({
+  proposal,
+  busy,
+  onClose,
+  onConfirm,
+}: {
+  proposal: ProposalDetail;
+  busy: boolean;
+  onClose: () => void;
+  onConfirm: (note: string) => void;
+}) {
+  const [note, setNote] = useState("");
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4">
+      <section className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
+        <header className="border-b px-5 py-4">
+          <h2 className="text-lg font-bold">Yêu cầu bổ sung hồ sơ</h2>
+          <p className="mt-1 text-sm text-muted">{proposal.clubName}</p>
+        </header>
+        <div className="p-5">
+          <label>
+            <span className="label">Nội dung cần bổ sung</span>
+            <textarea
+              className="input h-36 py-3"
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              placeholder="Nêu rõ thông tin hoặc tài liệu người nộp cần cập nhật..."
+              maxLength={1000}
+              autoFocus
+            />
+          </label>
+          <p className="mt-2 text-right text-xs text-muted">{note.length}/1000</p>
+        </div>
+        <footer className="flex justify-end gap-2 border-t px-5 py-4">
+          <button className="btn-ghost" onClick={onClose} disabled={busy}>
+            Hủy
+          </button>
+          <button
+            className="btn-primary"
+            onClick={() => onConfirm(note.trim())}
+            disabled={busy || !note.trim()}
+          >
+            {busy ? "Đang gửi..." : "Gửi yêu cầu"}
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
 export function SystemAdminDashboard() {
   const profile = useCurrentProfile();
   const displayName = getProfileDisplayName(profile);
@@ -1863,6 +1914,7 @@ export function ProposalReviewPage() {
   const [error, setError] = useState("");
   const [approveOpen, setApproveOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
+  const [revisionOpen, setRevisionOpen] = useState(false);
   const [reviewing, setReviewing] = useState(false);
 
   useEffect(() => {
@@ -1924,6 +1976,32 @@ export function ProposalReviewPage() {
       setRejectOpen(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể xử lý hồ sơ.");
+    } finally {
+      setReviewing(false);
+    }
+  }
+
+  async function requestRevision(revisionNote: string) {
+    if (!proposal || proposal.status !== "Pending") return;
+
+    setReviewing(true);
+    setError("");
+
+    try {
+      await proposalApi.requestRevision(proposal.id, revisionNote);
+      setProposal({
+        ...proposal,
+        status: "NeedsRevision",
+        rejectionReason: revisionNote,
+        reviewedAt: new Date().toISOString(),
+      });
+      setRevisionOpen(false);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Không thể gửi yêu cầu bổ sung hồ sơ.",
+      );
     } finally {
       setReviewing(false);
     }
@@ -2115,6 +2193,15 @@ export function ProposalReviewPage() {
             <XCircle className="h-4 w-4" />
             Từ chối
           </button>
+          {proposal.status === "Pending" && (
+            <button
+              className="btn-secondary"
+              onClick={() => setRevisionOpen(true)}
+            >
+              <MessageSquare className="h-4 w-4" />
+              Yêu cầu bổ sung
+            </button>
+          )}
           <button className="btn-primary" onClick={() => setApproveOpen(true)}>
             <CheckCircle2 className="h-4 w-4" />
             Duyệt hồ sơ
@@ -2137,6 +2224,15 @@ export function ProposalReviewPage() {
           busy={reviewing}
           onClose={() => setRejectOpen(false)}
           onConfirm={(reason) => review(false, reason)}
+        />
+      )}
+
+      {revisionOpen && (
+        <RequestRevisionDialog
+          proposal={proposal}
+          busy={reviewing}
+          onClose={() => setRevisionOpen(false)}
+          onConfirm={requestRevision}
         />
       )}
     </main>
@@ -2671,7 +2767,7 @@ export function OfficialClubCreatePage() {
             Hủy bỏ
           </button>
           <button className="btn-primary" disabled={submitting}>
-            {submitting ? "Đang xử lý..." : "Khởi tạo CLB ngay"}
+            {submitting ? "Đang tối ưu ảnh và tạo CLB..." : "Khởi tạo CLB ngay"}
           </button>
         </div>
       </form>

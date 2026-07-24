@@ -24,6 +24,7 @@ import type {
   MyMembership,
 } from "../types/club";
 import {
+  applyImageFallback,
   DataTable,
   EmptyState,
   FilterBar,
@@ -130,6 +131,7 @@ function ClubTile({ club }: { club: ClubTileData }) {
         src={getClubImage(club)}
         alt={club.name}
         className="h-44 w-full object-cover"
+        onError={(event) => applyImageFallback(event, images.meeting)}
       />
       <div className="p-5">
         <div className="flex items-start justify-between gap-3">
@@ -170,6 +172,7 @@ function PublicEventCard({
             src={event.imageUrl}
             alt={event.name}
             className="h-16 w-16 shrink-0 rounded-xl object-cover"
+            onError={(event) => applyImageFallback(event)}
           />
         ) : (
           <div className="grid h-16 w-16 shrink-0 place-items-center rounded-xl bg-primary-soft text-center text-sm font-extrabold text-primary">
@@ -202,6 +205,7 @@ function PublicEventCard({
         src={getEventImage(event)}
         className="h-44 w-full object-cover"
         alt={event.name}
+        onError={(imageEvent) => applyImageFallback(imageEvent)}
       />
       <div className="p-5">
         <StatusBadge status={event.status} />
@@ -966,6 +970,7 @@ export function ClubDetailPage() {
           src={getClubImage(club)}
           className="h-72 w-full object-cover"
           alt={club.name}
+          onError={(event) => applyImageFallback(event, images.meeting)}
         />
         <div className="p-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -1190,6 +1195,7 @@ export function ClubDetailPage() {
                       src={activity.imageUrl}
                       alt={activity.title}
                       className="h-16 w-16 shrink-0 rounded-xl object-cover"
+                      onError={(event) => applyImageFallback(event)}
                     />
                   ) : (
                     <div className="grid h-16 w-16 shrink-0 place-items-center rounded-xl bg-primary-soft text-center font-bold text-primary">
@@ -1447,7 +1453,7 @@ export function ActivityDetailPage() {
     deadlineTime && !Number.isNaN(deadlineTime) && deadlineTime < Date.now(),
   );
   const acceptsRegistration =
-    ["Upcoming", "InProgress"].includes(activity.status) && !deadlinePassed;
+    activity.status === "Upcoming" && !deadlinePassed;
   const isFull = Boolean(
     activity.capacity && activity.registeredCount >= activity.capacity,
   );
@@ -1525,6 +1531,7 @@ export function ActivityDetailPage() {
         src={getActivityImage(activity)}
         alt={activity.title}
         className="mb-6 h-72 w-full rounded-2xl object-cover shadow-card"
+        onError={(event) => applyImageFallback(event)}
       />
 
       <div className="grid gap-6 lg:grid-cols-[1.4fr_.8fr]">
@@ -2068,6 +2075,7 @@ export function EventDetailPage() {
           src={event.imageUrl}
           alt={event.name}
           className="mb-6 h-72 w-full rounded-2xl object-cover shadow-card"
+          onError={(imageEvent) => applyImageFallback(imageEvent)}
         />
       )}
 

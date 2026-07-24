@@ -56,4 +56,30 @@ export const membershipApi = {
   removeMember(clubId: string, userId: string) {
     return apiRequest<boolean>(`/api/clubs/${clubId}/members/${userId}`, { method: "DELETE" });
   },
+
+  transferAdmin(clubId: string, newAdminUserId: string) {
+    return apiRequest<boolean>(`/api/clubs/${clubId}/members/transfer-admin`, {
+      method: "PUT",
+      body: JSON.stringify({ newAdminUserId }),
+    });
+  },
+
+  nominateSuccessor(clubId: string, newAdminUserId: string) {
+    return apiRequest<boolean>(`/api/clubs/${clubId}/members/nominate-successor`, {
+      method: "PUT",
+      body: JSON.stringify({ newAdminUserId }),
+    });
+  },
+
+  acceptSuccession(clubId: string) {
+    return apiRequest<boolean>(`/api/clubs/${clubId}/members/accept-succession`, {
+      method: "PUT",
+    });
+  },
+
+  rejectSuccession(clubId: string) {
+    return apiRequest<boolean>(`/api/clubs/${clubId}/members/reject-succession`, {
+      method: "PUT",
+    });
+  },
 };

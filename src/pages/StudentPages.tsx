@@ -3,10 +3,13 @@ import {
   CalendarDays,
   Camera,
   CheckCircle2,
+  CircleMinus,
+  CirclePlus,
   ChevronRight,
   Edit3,
   LockKeyhole,
   Medal,
+  History,
   Save,
   ShieldCheck,
   Sparkles,
@@ -29,12 +32,13 @@ import { notificationApi } from "../api/notificationApi";
 import { pointApi } from "../api/pointApi";
 import { proposalApi } from "../api/proposalApi";
 import { storageApi } from "../api/storageApi";
+import { setSelectedAdminClubId } from "../clubPermissions";
 import type { UserProfile } from "../types/auth";
 import type { MyRegisteredActivityDto } from "../types/activity";
 import type { ClubCategory, ClubSummary, MyMembership } from "../types/club";
 import type { EventDto, EventRegistration } from "../types/event";
 import type { NotificationDto } from "../types/notification";
-import type { MyPointSummary } from "../types/point";
+import type { MyPointSummary, PointTransaction } from "../types/point";
 import type {
   ProposalDetail,
   ProposalStatus,
@@ -42,6 +46,7 @@ import type {
   SubmitProposalRequest,
 } from "../types/proposal";
 import {
+  applyImageFallback,
   DataTable,
   EmptyState,
   FilterBar,
@@ -346,10 +351,10 @@ function getRankLabel(totalPoints: number) {
 
 function getPointTypeLabel(type?: string | null) {
   const labels: Record<string, string> = {
-    CheckIn: "Check-in sự kiện",
-    Activity: "Hoạt động CLB",
+    CheckIn: "Điểm check-in",
+    Activity: "Tham gia hoạt động",
     Support: "Hỗ trợ tổ chức",
-    Feedback: "Feedback hoạt động",
+    Feedback: "Gửi feedback",
     Absence: "Vắng mặt",
     Bonus: "Điểm thưởng",
     Penalty: "Trừ điểm",
@@ -678,6 +683,7 @@ export function StudentDashboard() {
                         <img
                           src={getClubImage(club)}
                           className="h-20 w-20 rounded-xl object-cover"
+                          onError={(event) => applyImageFallback(event, images.meeting)}
                         />
                         <div>
                           <h3 className="font-bold">{club.name}</h3>
@@ -699,6 +705,7 @@ export function StudentDashboard() {
                         {manager && (
                           <Link
                             to="/club-admin"
+                            onClick={() => setSelectedAdminClubId(club.id)}
                             className="btn-primary flex-1 justify-center"
                           >
                             Quản trị
@@ -735,6 +742,7 @@ export function StudentDashboard() {
                       src={event.imageUrl}
                       alt={event.name}
                       className="h-14 w-14 shrink-0 rounded-xl object-cover"
+                      onError={(imageEvent) => applyImageFallback(imageEvent)}
                     />
                   ) : (
                     <div className="grid h-14 w-14 place-items-center rounded-xl bg-sky-100 font-extrabold text-sky-700">
@@ -833,6 +841,7 @@ export function ProfilePage() {
   const [profileClubs, setProfileClubs] = useState<ClubSummary[]>([]);
   const [loading, setLoading] = useState(!profile);
   const [error, setError] = useState("");
+  const [avatarFailed, setAvatarFailed] = useState(false);
 
   useEffect(() => {
     let ignore = false;
@@ -867,20 +876,30 @@ export function ProfilePage() {
     };
   }, []);
 
+  useEffect(() => {
+    setAvatarFailed(false);
+  }, [profile?.avatarUrl]);
+
   const initials = getInitials(profile?.fullName || profile?.username);
   const coverImageUrl = profile?.coverUrl || images.campus;
 
   return (
     <main className="page-shell">
       <div className="relative overflow-hidden rounded-[2rem] border bg-white shadow-card">
-        <img src={coverImageUrl} alt="" className="h-64 w-full object-cover" />
+        <img
+          src={coverImageUrl}
+          alt=""
+          className="h-64 w-full object-cover"
+          onError={(event) => applyImageFallback(event, images.campus)}
+        />
         <div className="p-6 pt-20 sm:pl-52 sm:pt-6">
           <div className="absolute bottom-24 left-7 grid h-36 w-36 place-items-center overflow-hidden rounded-3xl border-4 border-white bg-ink text-4xl font-extrabold text-white sm:bottom-6">
-            {profile?.avatarUrl ? (
+            {profile?.avatarUrl && !avatarFailed ? (
               <img
                 src={profile.avatarUrl}
                 alt={profile.fullName}
                 className="h-full w-full object-cover"
+                onError={() => setAvatarFailed(true)}
               />
             ) : (
               initials
@@ -1548,12 +1567,14 @@ export function AccountSecurityPage() {
 }
 export function NotificationsPage() {
   const [notifications, setNotifications] = useState<NotificationDto[]>([]);
+  const [memberships, setMemberships] = useState<MyMembership[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [markingId, setMarkingId] = useState("");
   const [markingAll, setMarkingAll] = useState(false);
+  const [respondingClubId, setRespondingClubId] = useState("");
 
   const quickLinks = [
     {
@@ -1584,14 +1605,16 @@ export function NotificationsPage() {
       setError("");
 
       try {
-        const [notificationResult, unreadResult] = await Promise.all([
+        const [notificationResult, unreadResult, membershipResult] = await Promise.all([
           notificationApi.getNotifications(1, 20),
           notificationApi.getUnreadCount(),
+          membershipApi.getMyMemberships(),
         ]);
 
         if (!ignore) {
           setNotifications(notificationResult.items);
           setUnreadCount(unreadResult.count);
+          setMemberships(membershipResult);
         }
       } catch (err) {
         if (!ignore) {
@@ -1666,6 +1689,61 @@ export function NotificationsPage() {
       );
     } finally {
       setMarkingAll(false);
+    }
+  };
+
+  const findSuccessionClub = (notification: NotificationDto) => {
+    if (notification.type !== "SUCCESSION_NOMINATED") return null;
+    const content = notification.content.toLocaleLowerCase("vi");
+    return memberships.find(
+      (membership) =>
+        membership.status === "Approved" &&
+        content.includes(membership.clubName.toLocaleLowerCase("vi")),
+    ) ?? null;
+  };
+
+  const respondToSuccession = async (
+    notification: NotificationDto,
+    clubId: string,
+    accept: boolean,
+  ) => {
+    setRespondingClubId(clubId);
+    setError("");
+    setSuccessMessage("");
+    try {
+      if (accept) {
+        await membershipApi.acceptSuccession(clubId);
+      } else {
+        await membershipApi.rejectSuccession(clubId);
+      }
+
+      if (!notification.isRead) {
+        await notificationApi.markAsRead(notification.id).catch(() => undefined);
+        setUnreadCount((current) => Math.max(0, current - 1));
+      }
+      setNotifications((current) =>
+        current.map((item) =>
+          item.id === notification.id ? { ...item, isRead: true } : item,
+        ),
+      );
+      setMemberships(await membershipApi.getMyMemberships());
+      if (accept) {
+        const profile = await authApi.getMe();
+        setProfile(profile);
+        window.dispatchEvent(new Event("clubhub_profile_updated"));
+      }
+      window.dispatchEvent(new Event("clubhub_notifications_updated"));
+      setSuccessMessage(
+        accept
+          ? "Bạn đã chấp nhận quyền quản trị câu lạc bộ."
+          : "Bạn đã từ chối đề cử quyền quản trị.",
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Không thể xử lý đề cử quyền quản trị.",
+      );
+    } finally {
+      setRespondingClubId("");
     }
   };
 
@@ -1764,6 +1842,35 @@ export function NotificationsPage() {
                     <p className="mt-2 leading-6 text-muted">
                       {notification.content}
                     </p>
+                    {(() => {
+                      const club = findSuccessionClub(notification);
+                      if (!club) return null;
+                      const busy = respondingClubId === club.clubId;
+                      return (
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            className="btn-primary"
+                            disabled={busy}
+                            onClick={() =>
+                              void respondToSuccession(notification, club.clubId, true)
+                            }
+                          >
+                            Chấp nhận quyền quản trị
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            disabled={busy}
+                            onClick={() =>
+                              void respondToSuccession(notification, club.clubId, false)
+                            }
+                          >
+                            Từ chối
+                          </button>
+                        </div>
+                      );
+                    })()}
                     <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-muted">
                       <span>{formatFullDate(notification.createdAt)}</span>
                       {!notification.isRead && (
@@ -2149,6 +2256,7 @@ export function MyClubsPage() {
                   src={getClubImage(club)}
                   alt={club.name}
                   className="h-40 w-full object-cover"
+                  onError={(event) => applyImageFallback(event, images.meeting)}
                 />
                 <div className="p-5">
                   <div className="flex items-start justify-between gap-3">
@@ -2187,6 +2295,7 @@ export function MyClubsPage() {
                     {manager ? (
                       <Link
                         to="/club-admin"
+                        onClick={() => setSelectedAdminClubId(club.id)}
                         className="btn-primary flex-1 justify-center"
                       >
                         Quản trị
@@ -2450,6 +2559,7 @@ export function MyEventsPage() {
                     src={imageUrl}
                     alt={registration.eventName}
                     className="h-20 w-full rounded-xl object-cover sm:w-28 lg:h-16 lg:w-20"
+                    onError={(event) => applyImageFallback(event)}
                   />
                 ) : (
                   <div className="grid h-16 w-16 shrink-0 place-items-center rounded-xl bg-primary-soft text-center font-bold text-primary">
@@ -3458,8 +3568,8 @@ export function ProposalStepPage({ step }: { step: number }) {
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      setError("Ảnh CLB không được vượt quá 5MB.");
+    if (file.size > 15 * 1024 * 1024) {
+      setError("Ảnh CLB không được vượt quá 15 MB.");
       return;
     }
 
@@ -3754,7 +3864,7 @@ export function ProposalStepPage({ step }: { step: number }) {
                     </div>
                     {uploadingLogo && (
                       <p className="mt-3 rounded-xl bg-primary-soft px-4 py-3 text-sm font-semibold text-primary">
-                        Đang upload ảnh CLB...
+                        Đang tối ưu và tải ảnh CLB...
                       </p>
                     )}
                     <input
@@ -3892,6 +4002,10 @@ export function PointsHistoryPage() {
   const [loadingClubs, setLoadingClubs] = useState(true);
   const [loadingPoints, setLoadingPoints] = useState(false);
   const [error, setError] = useState("");
+  const [pointFilter, setPointFilter] = useState<
+    "all" | "earned" | "deducted"
+  >("all");
+  const [typeFilter, setTypeFilter] = useState("");
 
   useEffect(() => {
     let ignore = false;
@@ -3971,36 +4085,55 @@ export function PointsHistoryPage() {
   }, [selectedClubId]);
 
   const totalPoints = pointSummary?.totalPoints ?? 0;
-  const rankLabel = getRankLabel(totalPoints);
   const recentTransactions = pointSummary?.recentTransactions ?? [];
-  const positivePoints = recentTransactions
+  const earnedPoints = recentTransactions
     .filter((transaction) => transaction.points > 0)
     .reduce((sum, transaction) => sum + transaction.points, 0);
+  const deductedPoints = Math.abs(
+    recentTransactions
+      .filter((transaction) => transaction.points < 0)
+      .reduce((sum, transaction) => sum + transaction.points, 0),
+  );
+  const pointTypes = Array.from(
+    new Set(recentTransactions.map((transaction) => transaction.type)),
+  );
+  const visibleTransactions = recentTransactions.filter((transaction) => {
+    if (pointFilter === "earned" && transaction.points <= 0) return false;
+    if (pointFilter === "deducted" && transaction.points >= 0) return false;
+    return !typeFilter || transaction.type === typeFilter;
+  });
 
   return (
     <main className="page-shell">
       <PageTitle
-        title="Lịch sử điểm thành viên"
-        description="Theo dõi điểm rèn luyện cá nhân trong CLB."
+        title="Điểm hoạt động của tôi"
+        description="Điểm được tính riêng trong từng câu lạc bộ bạn tham gia."
       />
       {myClubs.length > 0 && (
-        <div className="mb-5 flex flex-col gap-2 sm:max-w-sm">
-          <label className="text-sm font-bold text-muted" htmlFor="point-club">
-            Chọn câu lạc bộ
+        <section className="mb-6 flex flex-col gap-4 border-y bg-white px-5 py-4 sm:flex-row sm:items-end sm:justify-between">
+          <label className="block w-full sm:max-w-md">
+            <span className="label">Câu lạc bộ</span>
+            <select
+              id="point-club"
+              value={selectedClubId}
+              onChange={(event) => {
+                setSelectedClubId(event.target.value);
+                setPointFilter("all");
+                setTypeFilter("");
+              }}
+              className="input"
+            >
+              {myClubs.map((club) => (
+                <option key={club.id} value={club.id}>
+                  {club.name}
+                </option>
+              ))}
+            </select>
           </label>
-          <select
-            id="point-club"
-            value={selectedClubId}
-            onChange={(event) => setSelectedClubId(event.target.value)}
-            className="h-12 rounded-2xl border bg-white px-4 font-semibold outline-none transition focus:border-primary"
-          >
-            {myClubs.map((club) => (
-              <option key={club.id} value={club.id}>
-                {club.name}
-              </option>
-            ))}
-          </select>
-        </div>
+          <p className="text-sm text-muted">
+            Tổng điểm và xếp hạng chỉ áp dụng trong CLB đang chọn.
+          </p>
+        </section>
       )}
       {error && (
         <p className="mb-5 rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
@@ -4015,15 +4148,15 @@ export function PointsHistoryPage() {
       )}
       {(loadingClubs || myClubs.length > 0) && (
         <>
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
-              label="Tổng điểm"
+              label="Tổng điểm hiện tại"
               value={loadingPoints ? "..." : String(totalPoints)}
               meta={pointSummary ? pointSummary.clubName : "Theo CLB đã chọn"}
               icon={Medal}
             />
             <StatCard
-              label="Xếp hạng CLB"
+              label="Xếp hạng trong CLB"
               value={
                 loadingPoints
                   ? "..."
@@ -4031,16 +4164,27 @@ export function PointsHistoryPage() {
                     ? `#${pointSummary.rank}`
                     : "--"
               }
-              meta={rankLabel}
+              meta={
+                pointSummary?.rank
+                  ? "Xếp theo tổng điểm thành viên"
+                  : "Chưa có dữ liệu xếp hạng"
+              }
               icon={Star}
               tone="blue"
             />
             <StatCard
-              label="Điểm cộng gần đây"
-              value={loadingPoints ? "..." : `+${positivePoints}`}
-              meta={`${recentTransactions.length} giao dịch gần nhất`}
-              icon={CheckCircle2}
+              label="Đã cộng gần đây"
+              value={loadingPoints ? "..." : `+${earnedPoints}`}
+              meta="Trong tối đa 10 giao dịch gần nhất"
+              icon={CirclePlus}
               tone="green"
+            />
+            <StatCard
+              label="Đã trừ gần đây"
+              value={loadingPoints ? "..." : `-${deductedPoints}`}
+              meta="Trong tối đa 10 giao dịch gần nhất"
+              icon={CircleMinus}
+              tone="slate"
             />
           </div>
           {loadingPoints && (
@@ -4060,26 +4204,108 @@ export function PointsHistoryPage() {
                   description="Điểm hoạt động của bạn trong CLB này sẽ xuất hiện tại đây."
                 />
               </div>
-            )}
+          )}
           {!loadingPoints && recentTransactions.length > 0 && (
-            <section className="card mt-6 overflow-hidden">
-              <DataTable
-                columns={["Thời gian", "Hoạt động", "Số điểm", "Ghi chú"]}
-                rows={recentTransactions.map((transaction) => [
-                  formatFullDate(transaction.createdAt),
-                  getPointTypeLabel(transaction.type),
-                  <span
-                    className={
-                      transaction.points >= 0
-                        ? "font-bold text-fpt-green-dark"
-                        : "font-bold text-red-600"
-                    }
+            <section className="mt-6 overflow-hidden border-y bg-white">
+              <div className="flex flex-col gap-4 border-b px-5 py-4 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                  <h2 className="flex items-center gap-2 text-lg font-bold">
+                    <History className="h-5 w-5 text-primary" />
+                    Giao dịch gần nhất
+                  </h2>
+                  <p className="mt-1 text-sm text-muted">
+                    Hệ thống hiện trả tối đa 10 giao dịch cho CLB đang chọn.
+                  </p>
+                </div>
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <div
+                    className="inline-flex rounded-lg border bg-slate-50 p-1"
+                    aria-label="Lọc theo chiều điểm"
                   >
-                    {formatPointValue(transaction.points)}
-                  </span>,
-                  transaction.note || "--",
-                ])}
-              />
+                    {([
+                      ["all", "Tất cả"],
+                      ["earned", "Điểm cộng"],
+                      ["deducted", "Điểm trừ"],
+                    ] as const).map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setPointFilter(value)}
+                        className={`min-h-9 px-3 text-sm font-semibold ${
+                          pointFilter === value
+                            ? "rounded-md bg-white text-primary shadow-sm"
+                            : "text-muted"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <select
+                    className="input min-w-48"
+                    value={typeFilter}
+                    onChange={(event) => setTypeFilter(event.target.value)}
+                    aria-label="Lọc theo loại giao dịch"
+                  >
+                    <option value="">Tất cả loại điểm</option>
+                    {pointTypes.map((type) => (
+                      <option key={type} value={type}>
+                        {getPointTypeLabel(type)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {visibleTransactions.length === 0 ? (
+                <div className="p-6">
+                  <EmptyState
+                    title="Không có giao dịch phù hợp"
+                    description="Hãy thay đổi bộ lọc để xem các giao dịch điểm khác."
+                  />
+                </div>
+              ) : (
+                <div className="divide-y">
+                  {visibleTransactions.map((transaction: PointTransaction) => {
+                    const earned = transaction.points >= 0;
+                    const PointIcon = earned ? CirclePlus : CircleMinus;
+
+                    return (
+                      <article
+                        key={transaction.id}
+                        className="flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center"
+                      >
+                        <span
+                          className={`grid h-11 w-11 shrink-0 place-items-center rounded-lg ${
+                            earned
+                              ? "bg-emerald-50 text-emerald-700"
+                              : "bg-red-50 text-red-600"
+                          }`}
+                        >
+                          <PointIcon className="h-5 w-5" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <h3 className="font-bold text-ink">
+                            {transaction.note ||
+                              getPointTypeLabel(transaction.type)}
+                          </h3>
+                          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-sm text-muted">
+                            <span>{getPointTypeLabel(transaction.type)}</span>
+                            <span>{formatFullDate(transaction.createdAt)}</span>
+                          </div>
+                        </div>
+                        <strong
+                          className={`text-lg ${
+                            earned ? "text-emerald-700" : "text-red-600"
+                          }`}
+                        >
+                          {formatPointValue(transaction.points)} điểm
+                        </strong>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
             </section>
           )}
         </>

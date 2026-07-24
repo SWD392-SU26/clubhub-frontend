@@ -1,4 +1,4 @@
-import type { ComponentType, ReactNode } from "react";
+import type { ComponentType, ReactNode, SyntheticEvent } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   Bell,
@@ -37,7 +37,12 @@ import { authApi } from "./api/authApi";
 import { clearAuthSession, getProfile } from "./api/authStorage";
 import { membershipApi } from "./api/membershipApi";
 import { notificationApi } from "./api/notificationApi";
-import { getPrimaryAdminMembership } from "./clubPermissions";
+import {
+  getAdminMemberships,
+  getPrimaryAdminMembership,
+  setSelectedAdminClubId,
+} from "./clubPermissions";
+import type { MyMembership } from "./types/club";
 export const images = {
   campus:
     "https://images.unsplash.com/photo-1542744173-8e7e53415bb0?auto=format&fit=crop&w=1600&q=80",
@@ -47,6 +52,16 @@ export const images = {
   meeting:
     "https://images.unsplash.com/photo-1542744173-8e7e53415bb0?auto=format&fit=crop&w=1200&q=80",
 };
+
+export function applyImageFallback(
+  event: SyntheticEvent<HTMLImageElement>,
+  fallback = images.code,
+) {
+  const image = event.currentTarget;
+  image.onerror = null;
+  image.src = fallback;
+}
+
 export function Brand({
   compact = false,
   to = "/",
@@ -125,6 +140,7 @@ function UserProfileMenu({
   editProfilePath = "/profile/edit",
   securityPath = "/account/security",
   clubAdminPath,
+  adminMemberships = [],
   buttonClassName = "",
   menuClassName = "right-0 top-12",
 }: {
@@ -135,11 +151,13 @@ function UserProfileMenu({
   editProfilePath?: string;
   securityPath?: string;
   clubAdminPath?: string;
+  adminMemberships?: MyMembership[];
   buttonClassName?: string;
   menuClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [profile, setProfileState] = useState(() => getProfile());
+  const [avatarFailed, setAvatarFailed] = useState(false);
   const close = () => setOpen(false);
   const displayName = profile?.fullName || profile?.username || name;
   const displayInitials =
@@ -165,6 +183,10 @@ function UserProfileMenu({
     };
   }, []);
 
+  useEffect(() => {
+    setAvatarFailed(false);
+  }, [profile?.avatarUrl]);
+
   return (
     <div className="relative">
       <button
@@ -175,11 +197,12 @@ function UserProfileMenu({
         aria-label="Mở menu tài khoản"
       >
         <span className="grid h-9 w-9 place-items-center overflow-hidden rounded-full bg-primary text-sm font-bold text-white">
-          {profile?.avatarUrl ? (
+          {profile?.avatarUrl && !avatarFailed ? (
             <img
               src={profile.avatarUrl}
               alt={displayName}
               className="block h-full w-full object-cover"
+              onError={() => setAvatarFailed(true)}
             />
           ) : (
             displayInitials
@@ -223,15 +246,43 @@ function UserProfileMenu({
               <LockKeyhole className="h-4 w-4" />
               Đổi mật khẩu
             </Link>
-            {clubAdminPath && (
+            {clubAdminPath && adminMemberships.length <= 1 && (
               <Link
                 to={clubAdminPath}
-                onClick={close}
+                onClick={() => {
+                  if (adminMemberships[0]) {
+                    setSelectedAdminClubId(adminMemberships[0].clubId);
+                  }
+                  close();
+                }}
                 className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-primary hover:bg-primary-soft"
               >
                 <ShieldCheck className="h-4 w-4" />
                 Chuyển sang quản trị CLB
               </Link>
+            )}
+            {clubAdminPath && adminMemberships.length > 1 && (
+              <div className="mt-1 border-t border-slate-100 pt-1">
+                <div className="flex items-center gap-3 px-3 py-2 text-xs font-bold uppercase text-muted">
+                  <ShieldCheck className="h-4 w-4" />
+                  Quản trị câu lạc bộ
+                </div>
+                {adminMemberships.map((membership) => (
+                  <Link
+                    key={membership.clubId}
+                    to={clubAdminPath}
+                    title={membership.clubName}
+                    onClick={() => {
+                      setSelectedAdminClubId(membership.clubId);
+                      close();
+                    }}
+                    className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-primary-soft hover:text-primary"
+                  >
+                    <Building2 className="h-4 w-4 shrink-0 text-primary" />
+                    <span className="min-w-0 truncate">{membership.clubName}</span>
+                  </Link>
+                ))}
+              </div>
             )}
           </div>
           <div className="border-t border-slate-100 p-2">
@@ -278,7 +329,7 @@ const publicLinks = [
 export function PublicHeader() {
   const [open, setOpen] = useState(false);
   const [profile, setProfileState] = useState(() => getProfile());
-  const [hasAdminClub, setHasAdminClub] = useState(false);
+  const [adminMemberships, setAdminMemberships] = useState<MyMembership[]>([]);
 
   useEffect(() => {
     const syncProfile = () => setProfileState(getProfile());
@@ -296,7 +347,7 @@ export function PublicHeader() {
     let active = true;
 
     if (!profile) {
-      setHasAdminClub(false);
+      setAdminMemberships([]);
       return () => {
         active = false;
       };
@@ -306,12 +357,12 @@ export function PublicHeader() {
       .getMyMemberships()
       .then((memberships) => {
         if (active) {
-          setHasAdminClub(Boolean(getPrimaryAdminMembership(memberships)));
+          setAdminMemberships(getAdminMemberships(memberships));
         }
       })
       .catch(() => {
         if (active) {
-          setHasAdminClub(false);
+          setAdminMemberships([]);
         }
       });
 
@@ -332,7 +383,10 @@ export function PublicHeader() {
   const workspace = isUniversityAdmin
     ? "University Admin workspace"
     : "Student workspace";
-  const clubAdminPath = hasAdminClub && !isUniversityAdmin ? "/club-admin" : undefined;
+  const clubAdminPath =
+    adminMemberships.length > 0 && !isUniversityAdmin
+      ? "/club-admin"
+      : undefined;
   return (
     <header className="sticky top-0 z-40 border-b bg-white/95 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
@@ -364,6 +418,7 @@ export function PublicHeader() {
                 editProfilePath={editProfilePath}
                 securityPath={securityPath}
                 clubAdminPath={clubAdminPath}
+                adminMemberships={adminMemberships}
               />
             </>
           ) : (
@@ -480,14 +535,14 @@ const studentNav = [
   ["/my-events", "Sự kiện", CalendarDays],
   ["/my-activities", "Hoạt động", ListChecks],
   ["/club-proposals", "Đề xuất CLB", ClipboardCheck],
-  ["/activity/points", "Điểm", Trophy],
+  ["/points", "Điểm", Trophy],
   ["/notifications", "Thông báo", Bell],
   ["/account/security", "Bảo mật", LockKeyhole],
 ] as const;
 export function StudentLayout() {
   const [open, setOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [hasAdminClub, setHasAdminClub] = useState(false);
+  const [adminMemberships, setAdminMemberships] = useState<MyMembership[]>([]);
 
   useEffect(() => {
     let ignore = false;
@@ -524,11 +579,11 @@ export function StudentLayout() {
       try {
         const memberships = await membershipApi.getMyMemberships();
         if (!ignore) {
-          setHasAdminClub(Boolean(getPrimaryAdminMembership(memberships)));
+          setAdminMemberships(getAdminMemberships(memberships));
         }
       } catch {
         if (!ignore) {
-          setHasAdminClub(false);
+          setAdminMemberships([]);
         }
       }
     }
@@ -544,12 +599,12 @@ export function StudentLayout() {
     <div className="flex min-h-screen flex-col">
       <header className="sticky top-0 z-40 border-b bg-white/95 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-7xl items-center gap-5 px-4 sm:px-6 lg:px-8">
-          <button className="btn-ghost md:hidden" onClick={() => setOpen(true)}>
+          <button className="btn-ghost lg:hidden" onClick={() => setOpen(true)}>
             <Menu />
           </button>
           <Brand to="/dashboard" />
-          <nav className="hidden gap-5 md:flex">
-            {studentNav.slice(0, 5).map(([to, label]) => (
+          <nav className="hidden gap-4 lg:flex">
+            {studentNav.slice(0, 6).map(([to, label]) => (
               <NavLink
                 key={to}
                 to={to}
@@ -561,7 +616,7 @@ export function StudentLayout() {
               </NavLink>
             ))}
           </nav>
-          <div className="ml-auto hidden items-center gap-2 rounded-xl bg-slate-100 px-3 sm:flex">
+          <div className="ml-auto hidden items-center gap-2 rounded-xl bg-slate-100 px-3 xl:flex">
             <Search className="h-4 w-4 text-muted" />
             <input
               className="h-10 bg-transparent text-sm outline-none"
@@ -584,7 +639,8 @@ export function StudentLayout() {
             name="Minh Hiếu"
             initials="MH"
             workspace="Student workspace"
-            clubAdminPath={hasAdminClub ? "/club-admin" : undefined}
+            clubAdminPath={adminMemberships.length ? "/club-admin" : undefined}
+            adminMemberships={adminMemberships}
           />
         </div>
       </header>
@@ -632,6 +688,7 @@ const clubAdminNav: NavItem[] = [
   ["/club-admin/events", "Sự kiện", CalendarDays],
   ["/club-admin/check-in", "Check-in", ScanLine],
   ["/club-admin/feedback", "Feedback", MessageSquare],
+  ["/club-admin/settings", "Cài đặt CLB", Settings],
 ];
 const systemAdminNav: NavItem[] = [
   ["/system-admin", "Tổng quan", LayoutDashboard],
@@ -645,6 +702,8 @@ const systemAdminNav: NavItem[] = [
 export function AdminLayout({ system = false }: { system?: boolean }) {
   const [open, setOpen] = useState(false);
   const [adminClubName, setAdminClubName] = useState("");
+  const [adminMemberships, setAdminMemberships] = useState<MyMembership[]>([]);
+  const [selectedAdminClubId, setSelectedAdminClubIdState] = useState("");
   const nav = system ? systemAdminNav : clubAdminNav;
   const homePath = system ? "/system-admin" : "/club-admin";
   const workspaceLabel = system
@@ -659,19 +718,29 @@ export function AdminLayout({ system = false }: { system?: boolean }) {
     async function loadAdminClub() {
       if (system) {
         setAdminClubName("");
+        setAdminMemberships([]);
+        setSelectedAdminClubIdState("");
         return;
       }
 
       try {
         const memberships = await membershipApi.getMyMemberships();
+        const availableAdminMemberships = getAdminMemberships(memberships);
         const adminMembership = getPrimaryAdminMembership(memberships);
 
         if (!ignore) {
           setAdminClubName(adminMembership?.clubName ?? "");
+          setAdminMemberships(availableAdminMemberships);
+          setSelectedAdminClubIdState(adminMembership?.clubId ?? "");
+          if (adminMembership) {
+            setSelectedAdminClubId(adminMembership.clubId);
+          }
         }
       } catch {
         if (!ignore) {
           setAdminClubName("");
+          setAdminMemberships([]);
+          setSelectedAdminClubIdState("");
         }
       }
     }
@@ -694,6 +763,33 @@ export function AdminLayout({ system = false }: { system?: boolean }) {
       <div className="mt-3 text-sm text-white/80">
         {workspaceLabel}
       </div>
+      {!system && adminMemberships.length > 1 && (
+        <label className="mt-4 block">
+          <span className="mb-1 block text-xs font-semibold text-white/70">
+            CLB đang quản trị
+          </span>
+          <select
+            value={selectedAdminClubId}
+            onChange={(event) => {
+              const clubId = event.target.value;
+              setSelectedAdminClubId(clubId);
+              setSelectedAdminClubIdState(clubId);
+              window.location.assign("/club-admin");
+            }}
+            className="h-11 w-full rounded-lg border border-white/20 bg-white/10 px-3 text-sm font-semibold text-white outline-none"
+          >
+            {adminMemberships.map((membership) => (
+              <option
+                key={membership.clubId}
+                value={membership.clubId}
+                className="text-ink"
+              >
+                {membership.clubName}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <nav className="mt-8 grid gap-2">
         {!system && (
           <Link

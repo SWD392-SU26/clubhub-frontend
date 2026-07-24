@@ -41,6 +41,10 @@ export type ReviewProposalRequest = {
   rejectionReason?: string;
 };
 
+export type RequestRevisionRequest = {
+  revisionNote: string;
+};
+
 export type SubmitProposalRequest = {
   clubName: string;
   category: ClubCategory;
