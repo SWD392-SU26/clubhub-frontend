@@ -7,7 +7,6 @@ import {
   ChevronDown,
   ChevronRight,
   ClipboardCheck,
-  FileChartColumn,
   Gauge,
   Home,
   LayoutDashboard,
@@ -322,7 +321,6 @@ export function PublicHeader() {
   }, [profile?.id, profile?.systemRole]);
 
   const isUniversityAdmin = profile?.systemRole === "UniversityAdmin";
-<<<<<<< HEAD
   const homePath = isUniversityAdmin ? "/system-admin" : "/dashboard";
   const profilePath = isUniversityAdmin ? "/system-admin/profile" : "/profile";
   const editProfilePath = isUniversityAdmin
@@ -332,36 +330,9 @@ export function PublicHeader() {
     ? "/system-admin/account/security"
     : "/account/security";
   const workspace = isUniversityAdmin
-      ? "University Admin workspace"
-=======
-  const homePath = hasAdminClub
-    ? "/club-admin"
-    : isUniversityAdmin
-      ? "/system-admin"
-      : "/dashboard";
-  const profilePath = hasAdminClub
-    ? "/club-admin/profile"
-    : isUniversityAdmin
-      ? "/system-admin/profile"
-      : "/profile";
-  const editProfilePath = hasAdminClub
-    ? "/club-admin/profile/edit"
-    : isUniversityAdmin
-      ? "/system-admin/profile/edit"
-      : "/profile/edit";
-  const securityPath = hasAdminClub
-    ? "/club-admin/account/security"
-    : isUniversityAdmin
-      ? "/system-admin/account/security"
-      : "/account/security";
-  const workspace = isUniversityAdmin
-    ? "Trang quản trị viên đại học"
-    : hasAdminClub
-      ? "Club Admin workspace"
->>>>>>> origin
-      : "Student workspace";
+    ? "University Admin workspace"
+    : "Student workspace";
   const clubAdminPath = hasAdminClub && !isUniversityAdmin ? "/club-admin" : undefined;
-
   return (
     <header className="sticky top-0 z-40 border-b bg-white/95 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
@@ -668,7 +639,6 @@ const systemAdminNav: NavItem[] = [
   ["/system-admin/clubs", "Quản lý CLB", Building2],
   ["/system-admin/users", "Người dùng", Users],
   ["/system-admin/club-admins", "Quản trị viên CLB", UserCog],
-  ["/system-admin/statistics", "Báo cáo", FileChartColumn],
   ["/system-admin/audit-log", "Nhật ký hệ thống", History],
   ["/system-admin/settings", "Cài đặt", Settings],
 ];
@@ -1070,7 +1040,6 @@ export {
   CheckCircle2,
   ChevronRight,
   ClipboardCheck,
-  FileChartColumn,
   Gauge,
   Home,
   LayoutDashboard,

@@ -17,6 +17,7 @@ export type UserProfile = {
   studentCode?: string | null;
   phone?: string | null;
   avatarUrl?: string | null;
+  coverUrl?: string | null;
   role?: BackendRole | string;
   systemRole: SystemRole;
   status?: string;
@@ -72,5 +73,6 @@ export type UpdateProfileRequest = {
   fullName?: string;
   phone?: string;
   avatarUrl?: string;
+  coverUrl?: string;
 };
 

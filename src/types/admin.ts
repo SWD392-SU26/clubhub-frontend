@@ -54,6 +54,7 @@ export type AdminUserProfile = {
   studentCode?: string | null;
   phone?: string | null;
   avatarUrl?: string | null;
+  coverUrl?: string | null;
   role: AdminUserRole | string;
   status: AdminUserStatus | string;
   isEmailVerified: boolean;

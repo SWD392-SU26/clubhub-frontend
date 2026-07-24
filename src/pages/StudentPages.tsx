@@ -187,6 +187,7 @@ type ProposalDraft = {
   contactEmail: string;
   contactPhone: string;
   advisor: string;
+  logoUrl: string;
   notes: string;
 };
 
@@ -206,6 +207,7 @@ const emptyProposalDraft: ProposalDraft = {
   contactEmail: "",
   contactPhone: "",
   advisor: "",
+  logoUrl: "",
   notes: "",
 };
 
@@ -236,6 +238,7 @@ function proposalToDraft(
     contactEmail: proposal.contactEmail || profile?.email || "",
     contactPhone: proposal.contactPhone || profile?.phone || "",
     advisor: proposal.advisor ?? "",
+    logoUrl: proposal.logoUrl ?? "",
     notes: proposal.notes ?? "",
   };
 }
@@ -289,6 +292,7 @@ function toSubmitProposalRequest(draft: ProposalDraft): SubmitProposalRequest {
     contactEmail: draft.contactEmail.trim(),
     contactPhone: draft.contactPhone.trim(),
     advisor: draft.advisor.trim(),
+    logoUrl: draft.logoUrl.trim(),
     notes: draft.notes.trim(),
   };
 }
@@ -864,11 +868,12 @@ export function ProfilePage() {
   }, []);
 
   const initials = getInitials(profile?.fullName || profile?.username);
+  const coverImageUrl = profile?.coverUrl || images.campus;
 
   return (
     <main className="page-shell">
       <div className="relative overflow-hidden rounded-[2rem] border bg-white shadow-card">
-        <img src={images.campus} alt="" className="h-64 w-full object-cover" />
+        <img src={coverImageUrl} alt="" className="h-64 w-full object-cover" />
         <div className="p-6 pt-20 sm:pl-52 sm:pt-6">
           <div className="absolute bottom-24 left-7 grid h-36 w-36 place-items-center overflow-hidden rounded-3xl border-4 border-white bg-ink text-4xl font-extrabold text-white sm:bottom-6">
             {profile?.avatarUrl ? (
@@ -983,9 +988,11 @@ export function EditProfilePage() {
   const [fullName, setFullName] = useState(profile?.fullName ?? "");
   const [phone, setPhone] = useState(profile?.phone ?? "");
   const [avatarUrl, setAvatarUrl] = useState(profile?.avatarUrl ?? "");
+  const [coverUrl, setCoverUrl] = useState(profile?.coverUrl ?? "");
   const [loading, setLoading] = useState(!profile);
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [uploadingCover, setUploadingCover] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -1004,6 +1011,7 @@ export function EditProfilePage() {
         setFullName(data.fullName);
         setPhone(data.phone ?? "");
         setAvatarUrl(data.avatarUrl ?? "");
+        setCoverUrl(data.coverUrl ?? "");
         setProfile(data);
       } catch (err) {
         if (ignore) return;
@@ -1050,12 +1058,14 @@ export function EditProfilePage() {
         fullName: fullName.trim(),
         phone: normalizedPhone || undefined,
         avatarUrl: avatarUrl.trim() || undefined,
+        coverUrl: coverUrl.trim() || undefined,
       });
 
       setProfileState(updated);
       setFullName(updated.fullName);
       setPhone(updated.phone ?? "");
       setAvatarUrl(updated.avatarUrl ?? "");
+      setCoverUrl(updated.coverUrl ?? "");
       setProfile(updated);
       setSuccess("Cập nhật hồ sơ thành công.");
     } catch (err) {
@@ -1095,6 +1105,36 @@ export function EditProfilePage() {
     }
   };
 
+  const uploadCover = async (file?: File) => {
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setError("Vui lòng chọn file ảnh.");
+      setSuccess("");
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Ảnh bìa không được vượt quá 5MB.");
+      setSuccess("");
+      return;
+    }
+
+    setUploadingCover(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const result = await storageApi.uploadImage(file, "avatars");
+      setCoverUrl(result.url);
+      setSuccess("Upload ảnh bìa thành công. Nhấn Lưu thay đổi để cập nhật hồ sơ.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload ảnh bìa thất bại.");
+    } finally {
+      setUploadingCover(false);
+    }
+  };
+
   const initials = getInitials(fullName || profile?.username);
 
   return (
@@ -1104,6 +1144,67 @@ export function EditProfilePage() {
         description="Cập nhật thông tin cá nhân và cách bạn xuất hiện trong cộng đồng ClubHub."
       />
       <form onSubmit={submit} className="space-y-6">
+        <section className="card overflow-hidden p-0">
+          <div className="relative h-52 bg-slate-100">
+            <img
+              src={coverUrl || images.campus}
+              alt=""
+              className="h-full w-full object-cover"
+            />
+            <label className="absolute bottom-4 right-4 inline-flex cursor-pointer items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-bold text-ink shadow-card ring-1 ring-slate-200 transition hover:text-primary">
+              <Camera className="h-4 w-4" />
+              {uploadingCover ? "Đang upload..." : "Đổi ảnh bìa"}
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                className="hidden"
+                disabled={uploadingCover}
+                onChange={(e) => {
+                  void uploadCover(e.target.files?.[0]);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+          </div>
+          <div className="p-6">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-xl font-bold">Ảnh bìa hồ sơ</h2>
+                <p className="mt-1 text-sm text-muted">
+                  Ảnh bìa sẽ hiển thị ở đầu trang hồ sơ cá nhân.
+                </p>
+              </div>
+              {coverUrl && (
+                <button
+                  type="button"
+                  className="btn-ghost min-h-0 px-3 py-2 text-sm"
+                  onClick={() => {
+                    setCoverUrl("");
+                    setError("");
+                    setSuccess("");
+                  }}
+                >
+                  Xóa ảnh bìa
+                </button>
+              )}
+            </div>
+            {uploadingCover && (
+              <p className="mt-3 rounded-xl bg-primary-soft px-4 py-3 text-sm font-semibold text-primary">
+                Đang upload ảnh bìa...
+              </p>
+            )}
+            <input
+              className="input mt-3"
+              placeholder="https://..."
+              value={coverUrl}
+              onChange={(e) => {
+                setCoverUrl(e.target.value);
+                setError("");
+                setSuccess("");
+              }}
+            />
+          </div>
+        </section>
           <section className="card flex flex-col items-center gap-5 p-6 sm:flex-row">
             <div className="relative h-28 w-28 shrink-0">
               <div className="grid h-full w-full place-items-center overflow-hidden rounded-full bg-ink text-xl font-bold text-white ring-1 ring-slate-200">
@@ -3245,6 +3346,7 @@ export function ProposalStepPage({ step }: { step: number }) {
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [draftLoading, setDraftLoading] = useState(() => {
     const activeProposalId = resubmitId || editId;
 
@@ -3346,6 +3448,32 @@ export function ProposalStepPage({ step }: { step: number }) {
       return next;
     });
     setError("");
+  };
+
+  const uploadProposalLogo = async (file?: File) => {
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setError("Vui lòng chọn file ảnh.");
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Ảnh CLB không được vượt quá 5MB.");
+      return;
+    }
+
+    setUploadingLogo(true);
+    setError("");
+
+    try {
+      const result = await storageApi.uploadImage(file, "proposals");
+      updateDraft("logoUrl", result.url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload ảnh CLB thất bại.");
+    } finally {
+      setUploadingLogo(false);
+    }
   };
 
   const validateCurrentStep = () => {
@@ -3577,6 +3705,69 @@ export function ProposalStepPage({ step }: { step: number }) {
           )}
           {step === 4 && (
             <>
+              <div className="sm:col-span-2">
+                <span className="label">Hình ảnh / logo CLB</span>
+                <div className="mt-2 flex flex-col gap-4 rounded-2xl border border-slate-200 p-4 sm:flex-row sm:items-center">
+                  <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-2xl bg-slate-100">
+                    {draft.logoUrl ? (
+                      <img
+                        src={draft.logoUrl}
+                        alt={draft.clubName || "Logo CLB"}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="grid h-full w-full place-items-center text-center text-sm font-semibold text-muted">
+                        Logo CLB
+                      </div>
+                    )}
+                    <label className="absolute bottom-2 right-2 grid h-8 w-8 cursor-pointer place-items-center rounded-full bg-primary text-white shadow-card ring-[3px] ring-white transition hover:bg-primary-dark">
+                      <Camera className="h-3.5 w-3.5" />
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        className="hidden"
+                        disabled={uploadingLogo}
+                        onChange={(event) => {
+                          void uploadProposalLogo(event.target.files?.[0]);
+                          event.target.value = "";
+                        }}
+                      />
+                    </label>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <h3 className="font-bold">Ảnh đại diện CLB</h3>
+                        <p className="mt-1 text-sm text-muted">
+                          Ảnh này sẽ được gửi kèm hồ sơ để admin xem trước CLB.
+                        </p>
+                      </div>
+                      {draft.logoUrl && (
+                        <button
+                          type="button"
+                          className="btn-ghost min-h-0 px-3 py-2 text-sm"
+                          onClick={() => updateDraft("logoUrl", "")}
+                        >
+                          Xóa ảnh
+                        </button>
+                      )}
+                    </div>
+                    {uploadingLogo && (
+                      <p className="mt-3 rounded-xl bg-primary-soft px-4 py-3 text-sm font-semibold text-primary">
+                        Đang upload ảnh CLB...
+                      </p>
+                    )}
+                    <input
+                      className="input mt-3"
+                      placeholder="https://..."
+                      value={draft.logoUrl}
+                      onChange={(event) =>
+                        updateDraft("logoUrl", event.target.value)
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
               <label className="sm:col-span-2">
                 <span className="label">Cố vấn dự kiến</span>
                 <input
@@ -3611,6 +3802,16 @@ export function ProposalStepPage({ step }: { step: number }) {
           {step === 5 && (
             <SectionCard title="Tóm tắt hồ sơ">
               <div className="grid gap-4 text-sm sm:grid-cols-2">
+                {draft.logoUrl && (
+                  <div className="sm:col-span-2">
+                    <div className="font-semibold text-muted">Hình ảnh CLB</div>
+                    <img
+                      src={draft.logoUrl}
+                      alt={draft.clubName || "Hình ảnh CLB"}
+                      className="mt-2 h-32 w-32 rounded-2xl border object-cover"
+                    />
+                  </div>
+                )}
                 <div>
                   <div className="font-semibold text-muted">Tên CLB</div>
                   <div className="mt-1 font-bold">
