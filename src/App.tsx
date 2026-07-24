@@ -47,7 +47,6 @@ import {
   ClubStatisticsPage,
   ClubStatusPage,
   OfficialClubCreatePage,
-  PlatformStatisticsPage,
   ProposalReviewPage,
   SystemAdminDashboard,
   SystemAuditLogPage,
@@ -250,10 +249,6 @@ export default function App() {
             <Route
               path="/system-admin/audit-log"
               element={<SystemAuditLogPage />}
-            />
-            <Route
-              path="/system-admin/statistics"
-              element={<PlatformStatisticsPage />}
             />
             <Route
               path="/system-admin/settings"

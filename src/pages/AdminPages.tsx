@@ -2056,6 +2056,18 @@ export function ProposalReviewPage() {
               <p className="mt-2 leading-6">{proposal.rejectionReason}</p>
             </div>
           )}
+          {proposal.logoUrl && (
+            <div className="mt-5 rounded-xl border bg-white p-4">
+              <div className="text-xs font-bold uppercase text-muted">
+                Hình ảnh CLB
+              </div>
+              <img
+                src={proposal.logoUrl}
+                alt={proposal.clubName}
+                className="mt-3 h-32 w-32 rounded-2xl object-cover"
+              />
+            </div>
+          )}
           <div className="mt-5 grid gap-3">
             {proposal.logoUrl && (
               <a
