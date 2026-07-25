@@ -1,7 +1,12 @@
 const configuredApiUrl = import.meta.env.VITE_API_BASE_URL?.trim();
 
+const resolvedApiUrl =
+  import.meta.env.PROD && configuredApiUrl?.startsWith("http://")
+    ? "/api-proxy"
+    : configuredApiUrl;
+
 export const API_BASE_URL = (
-  configuredApiUrl || "http://localhost:5100"
+  resolvedApiUrl || (import.meta.env.PROD ? "/api-proxy" : "http://localhost:5100")
 ).replace(/\/+$/, "");
 
 if (import.meta.env.PROD && !configuredApiUrl) {
