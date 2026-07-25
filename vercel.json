@@ -1,8 +1,23 @@
 {
-    "rewrites": [
+  "rewrites": [
+    {
+      "source": "/api-proxy/:path*",
+      "destination": "http://clubhub-1.ap-southeast-1.elasticbeanstalk.com/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/assets/(.*)",
+      "headers": [
         {
-            "source": "/api-proxy/:path*",
-            "destination": "http://clubhub-1.ap-southeast-1.elasticbeanstalk.com/:path*"
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
         }
-    ]
+      ]
+    }
+  ]
 }
